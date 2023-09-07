@@ -12,7 +12,7 @@ install.packages("treeCalcs")
 B1trees <- fread("./Inputs/B1trees.csv")
 MerchVolCalcConst <- fread("./Inputs/MerchVolCalcConst.csv")
 
-# Volume equation from North et al. 2016 Total merchantable volume equations for common tree species in BC
+# Volume equation from Nigh 2016 Total merchantable volume equations for common tree species in BC
 
 # v = e^bo * dbh^b1 * ht^b2
 # v = whole stem volume or mechantable volume (m3)
