@@ -16,6 +16,7 @@
 
 # Criteria 3. The number of CWD pieces. 
 #############################################################################################
+
 # Habitat Quality Index function
 cwdHQI <- function(cwdDat){
   cwd[Notes=="no CWD" | Notes=="no CWD on line", Diam_cm:=0][Notes=="no CWD" | Notes=="no CWD on line", Decay_class:=0]

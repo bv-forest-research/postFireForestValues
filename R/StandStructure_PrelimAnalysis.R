@@ -71,14 +71,16 @@ BA
 
 # Basal area diameter classes
 BAcl <- ggplot(BAdiamClass, aes(x=DBH_bin, y=BAPH)) +
-  geom_col(aes(colour=Planted), position="dodge")
+  geom_col(aes(colour=Species), position="dodge") +
+  facet_grid(rows=vars(Planted))
 BAcl
 
 # large live trees
 lglive <- PlotTree %>%
   filter(DBH_bin >=20) %>%
   ggplot(aes(x=DBH_bin, y=SPH)) +
-  geom_col(aes(colour=Planted), position="dodge")
+  geom_point(aes(colour=Planted)) +
+  facet_grid(rows=vars(Planted))
 lglive
 
 # large cottonwood or aspen
@@ -86,31 +88,33 @@ liveAcAt <- PlotTree %>%
   filter(Species=="Ac" | Species=="At") %>%
   filter(DBH_bin >= 20) %>%
   ggplot(aes(x=DBH_bin, y=SPH)) +
-  geom_col(aes(colour=Planted), position="dodge")
+  geom_point(aes(colour=Species)) +
+  facet_grid(rows=vars(Planted))
 liveAcAt
 
 # large snags
 snags <- PlotSnags %>% 
   filter(DBH_bin >= 20) %>%
   ggplot(aes(x=DBH_bin, y=SPH)) +
-  geom_col(aes(colour=Planted), position="dodge")
+  geom_point(aes(colour=Planted)) +
+  facet_grid(rows=vars(Planted))
 snags
 
 # CWD
 hqi <- ggplot(PlotCWD, aes(x=Planted, y=HQI)) +
-  geom_point()
+  geom_boxplot()
 hqi
 
 cwdVol <- ggplot(PlotCWD, aes(x=Planted, y=VolHa)) +
-  geom_point()
+  geom_boxplot()
 cwdVol
 
 cwdMaxDiam <- ggplot(PlotCWD, aes(x=Planted, y=diamMax)) +
-  geom_point()
+  geom_boxplot()
 cwdMaxDiam
 
 cwdN <- ggplot(PlotCWD, aes(x=Planted, y=PlotN)) +
-  geom_point()
+  geom_boxplot()
 cwdN
 
 cwdLoc <- cwd %>%
