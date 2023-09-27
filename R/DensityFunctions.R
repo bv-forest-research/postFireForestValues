@@ -21,7 +21,7 @@ TreeDensity <- function(treeDat_a1,treeDat_b1){
   FR_LiveTrees[Notes=="only 1/4 of A2",AreaSearchM2:=50/4]
   FR_LiveTrees[,PHF:=10000/AreaSearchM2] #accounting for smaller search areas
 
-  dbhClSize <- 2
+  dbhClSize <- 5
   diamClasses <- seq(0,(max(na.omit(FR_LiveTrees[,DBH]))+dbhClSize), by=dbhClSize)
   for(j in 1:length(diamClasses)){
     FR_LiveTrees[DBH <= diamClasses[j] & DBH > diamClasses[j]-dbhClSize, DBH_bin := diamClasses[j]]
