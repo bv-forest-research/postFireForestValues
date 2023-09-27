@@ -40,6 +40,7 @@ BAdiamClass <- merge(BAdiamClass, FR_treatments)
 # Live trees stems per hectare (density)
 source("./R/DensityFunctions.R")
 PlotTree <- TreeDensity(A1trees, B1trees) # ask Alana why 2cm size bins
+# AC - changed it to 5cm (2 is for SORTIE)
 PlotTree <- merge(PlotTree, FR_treatments)
 
 # Snags per hectare
