@@ -48,6 +48,6 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-Inputs/SoilClassification.csv
-
 Outputs/
+
+Inputs/
