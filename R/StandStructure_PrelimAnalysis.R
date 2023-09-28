@@ -4,10 +4,6 @@
 # Ingrid Farnell
 # June 8, 2023
 
-# Load libraries
-library(data.table)
-library(tidyverse)
-
 # Import data
 #Plot
 FR_treatments <- fread("./Inputs/FR_Treatments.csv") # has field plot assessed treatments and fire year
