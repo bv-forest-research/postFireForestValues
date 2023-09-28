@@ -1,21 +1,8 @@
+#code to start some multivariate looks
 
+# A. Clason
 
-
-
-#get live tree size classes across species
-PlotTree_allSp <- PlotTree[, .(SPH = sum(SPH)), by = c("PlotID","DBH_bin")]
-PlotTree_allSp_d <- dcast(PlotTree_allSp[,.(PlotID, DBH_bin, SPH)], 
-                        PlotID ~ DBH_bin,
-                        value.var = "SPH", fun = sum)
-#merge with treatment data
-PlotTree_tr <- merge(PlotTree_allSp_d, 
-                     FR_treatments[,.(PlotID, Planted, TimeSinceFire)], by = "PlotID",
-                     all.y = TRUE)
-PlotTree_tr[, Planted := as.factor(Planted)]
-
-cols_to_replace <- c("5","10","15","20","25","30","35","40")
-PlotTree_tr[, (cols_to_replace) := lapply(.SD, function(x) ifelse(is.na(x), 0, x)), 
-                 .SDcols = cols_to_replace]
+PlotTree_tr
 
 #add CWD things;
 tr_cwd <- merge(PlotTree_tr, PlotCWD[,.(PlotID, diamMed, diamMax, DCevenness, HQI, VolHa)],

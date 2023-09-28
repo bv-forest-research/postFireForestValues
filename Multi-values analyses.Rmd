@@ -1,0 +1,336 @@
+---
+title: "Impact of tree planting after fire on multiple forest values"
+author: "I. Farnell, J. Biro, G. Greene, E. Lilles, A. Clason"
+date: "2023-08-08"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  html_document:
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    number_sections: no
+    theme: flatly
+    highlight: tango
+    fig_caption: yes
+    code_folding: hide
+    df_print: paged
+    keep_md: no
+  word_document:
+    toc: yes
+    toc_depth: '2'
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r}
+# Load libraries
+library(data.table)
+library(tidyverse)
+
+library(treeCalcs)
+
+files_to_source <- list.files("./R", pattern = "Function", 
+                              full.names = TRUE)
+sapply(files_to_source, source)
+
+```
+
+
+Pathways
+```{r}
+
+in_dir <- "./Inputs/"
+out_dir <- "./Outputs/"
+
+```
+
+
+Plot treatments (planted, time since fire etc.), and all data
+
+```{r}
+FR_treatments <- fread(paste0(in_dir,"FR_Treatments.csv"))
+
+#Plot treatment cleaning
+FR_treatments[,`:=`(PlotID = as.factor(ID), Planted = as.factor(Planted))]
+FR_treatments[, TimeSinceFire := 2020 - FIRE_YEAR]
+#for this paper, we don't need all the columns:
+plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire)]
+
+
+#Tree data:
+A1trees <- fread(paste0(in_dir,"A1trees.csv"))
+B1trees <- fread(paste0(in_dir,"B1trees.csv"))
+Regen <- fread(paste0(in_dir,"Regen.csv"))
+
+#Soils data:
+Soils <- fread(paste0(in_dir,"Soils.csv"))
+
+#Woody debris:
+cwd <- fread(paste0(in_dir,"FireRehabData_CWD.csv"),stringsAsFactors = T)
+fwd <- fread(paste0(in_dir,"FireRehabData_FWD.csv"),stringsAsFactors = T)
+line <- fread(paste0(in_dir,"FireRehabData_TransectDistance.csv"),stringsAsFactors = T) 
+
+```
+
+# Value calculations
+
+## Basal area
+
+```{r}
+BAtrees <- BAPH(A1trees, B1trees)
+PlotBAtrees <- BAtrees[,.(BAPH=sum(BAPH)), by="PlotID"]
+#PlotBAtrees <- merge(PlotBAtrees, FR_treatments[,.(PlotID, Planted, TimeSinceFire)])
+
+```
+
+
+## Basal area by diameter class
+no done this one - need to go long to wide (so the columns represent diam bins BA)
+```{r}
+# 7.5+, 12.5+, 17.5+, 22.5+ (size classes from BC VRI )
+BAdiamClass <- BAPHsizeCl(A1trees, B1trees)
+PlotBAdiam <- BAdiamClass[,]
+BAdiamClass <- merge(BAdiamClass, FR_treatments)
+
+
+```
+
+## Stems per hectare
+
+```{r}
+#live trees per hectare ------------------
+PlotTree <- TreeDensity(A1trees, B1trees) # ask Alana why 2cm size bins
+# AC - changed it to 5cm (2 is for SORTIE)
+# get live tree size classes across species
+PlotTree_allSp <- PlotTree[, .(SPH = sum(SPH)), by = c("PlotID","DBH_bin")]
+PlotTree_allSp_d <- dcast(PlotTree_allSp[,.(PlotID, DBH_bin, SPH)], 
+                        PlotID ~ DBH_bin,
+                        value.var = "SPH", fun = sum)
+#merge with treatment data
+PlotTree_tr <- merge(PlotTree_allSp_d, 
+                     FR_treatments[,.(PlotID, Planted, TimeSinceFire)], by = "PlotID",
+                     all.y = TRUE)
+PlotTree_tr[, Planted := as.factor(Planted)]
+
+cols_to_replace <- c("5","10","15","20","25","30","35","40")
+PlotTree_tr[, (cols_to_replace) := lapply(.SD, function(x) ifelse(is.na(x), 0, x)), 
+                 .SDcols = cols_to_replace]
+PlotTree_tr
+
+
+# Snags per hectare ----------------------
+#not done
+PlotSnags <- SnagDensity(A1trees, B1trees)
+PlotSnags <- merge(PlotSnags, FR_treatments[,.(PlotID, Planted, TimeSinceFire)])
+
+
+```
+
+## CWD and cwd habitat
+
+```{r}
+# CWD HQI
+PlotHQI <- cwdHQI(cwd)
+PlotCWD <- cwdVar(cwd)
+PlotCWD <- merge(PlotCWD, PlotHQI)
+
+# CWD volume
+CWDvol <- cwdVol(cwd, line) #volume by species & decay class
+PlotCWDvol <- CWDvol[,.(VolHa=sum(VolHa)), by="PlotID"]
+PlotCWD <- merge(PlotCWD, PlotCWDvol)
+#PlotCWD <- merge(PlotCWD, FR_treatments[,.(PlotID, Planted, TimeSinceFire)])
+
+```
+
+## Merchantable Volume:
+
+```{r}
+#MerchVolCalcConst <- fread("./Inputs/MerchVolCalcConst.csv")
+merchTrees <- B1trees
+
+t <- vector()
+for(i in 1:nrow(merchTrees)){
+  t[i] <- TreeMerchVolFN(Species=merchTrees[i,Species], DBH=merchTrees[i,DBH], 
+                       HT=merchTrees[i,Height])
+}
+
+merchTrees[, MerchVol:=t]
+merchTrees[is.na(MerchVol), MerchVol:= 0] #check the function to make sure the NAs are correct
+
+PlotmerchTrees <- merchTrees[, .(MerchVol = sum(MerchVol)), by = "PlotID"]
+
+PlotmerchTrees
+```
+
+## Forest carbon:
+
+need to check all these values line up with our paper. Made slight changes to code!
+Also - need to get unknown conifer and unknown cwd estimates (Ingrid review treeCalcs)
+```{r}
+# trees ------------------
+treeC <- calc_tree_carbon(A1trees = A1trees, B1trees = B1trees)
+
+regenC <- calc_regen_c(Regen = Regen)
+
+carbon_dat <- merge(plot_treatments, merge(treeC, regenC, by = "PlotID", all = TRUE),
+                   by = "PlotID", all = TRUE)
+for (i in names(carbon_dat))carbon_dat[is.na(get(i)), (i):=0]
+
+# roots -------------------
+carbon_dat[, LiveRootC := ((LiveMgHa * 0.222) + (Regen_L_MGHa * 0.222)), 
+          by = seq_len(nrow(carbon_dat))] #root =  0.222 x live biomass
+#decaying the tree roots by time since fire
+carbon_dat[, DeadRootC := ((DeadMgHa * exp(-0.1044 * TimeSinceFire)) + 
+                             (Regen_D_MGHa * 0.222)), 
+          by = seq_len(nrow(carbon_dat))] #root =  0.222 x  dead biomass
+  
+# soil --------------------
+soilC <- calc_soil_carbon(soil = Soils)
+
+carbon_dat <- merge(carbon_dat, soilC, by = "PlotID", all = TRUE)
+for (i in names(carbon_dat))carbon_dat[is.na(get(i)), (i):=0]
+
+# woody debris ------------
+# need to double check mean values for UC in SBS
+wdC <- calc_wd_carbon(cwdDat = cwd, fwdDat = fwd, lineDat = line)
+
+carbon_dat <- merge(carbon_dat, wdC, by = "PlotID", all = TRUE)
+for (i in names(carbon_dat))carbon_dat[is.na(get(i)), (i):=0]
+ 
+
+# all together ------------------------------
+carbon_dat_m <- melt(carbon_dat, 
+                    id.vars = c("PlotID","Planted","TimeSinceFire"),
+                    measure.vars = c("LiveMgHa","DeadMgHa","Regen_D_MGHa","Regen_L_MGHa",
+                                     "MinSoilC_Mgha","Litter_C_MgHa",
+                                     "ForestFl_MgHa","cwd_MgHa","fwd_MgHa","LiveRootC",
+                                     "DeadRootC"),
+                    variable.name = "CarbonSource",
+                    value.name = "CarbonMgHa")
+
+carbon_dat <- merge(carbon_dat[,.(PlotID, Planted,TimeSinceFire)],
+                    carbon_dat_m[,.(TotalCarbon = sum(na.omit(CarbonMgHa))),
+                                             by="PlotID"], by ="PlotID")
+
+carbon_dat <- merge(carbon_dat,carbon_dat_m[CarbonSource=="DeadMgHa"|
+                                                   CarbonSource=="Regen_D_MGHa"|
+                                                   CarbonSource=="cwd_MgHa"|
+                                                   CarbonSource=="fwd_MgHa",
+                                                 .(DeadCarbon = sum(na.omit(CarbonMgHa))),
+                                                 by="PlotID"],by="PlotID")
+
+carbon_dat <- merge(carbon_dat,carbon_dat_m[CarbonSource=="LiveMgHa"|
+                                                   CarbonSource=="Regen_L_MGHa"|
+                                                   CarbonSource=="LiveRootC",
+                                                 .(LiveCarbon = sum(na.omit(CarbonMgHa))),
+                                                 by="PlotID"],by="PlotID")
+
+carbon_dat
+
+```
+
+
+## Moose habitat
+
+```{r}
+
+```
+
+## OTHER BIODIVERSITY????
+
+```{r}
+
+```
+
+
+# Combined values
+need to add a bunch more here when done
+```{r}
+value_dat1 <- merge(PlotBAtrees, PlotTree_tr,by = "PlotID", all.y = TRUE)
+value_dat1 <- merge(value_dat1, PlotCWD, by = "PlotID")
+value_dat1 <- merge(value_dat1, PlotmerchTrees, by = "PlotID")
+value_dat <- merge(value_dat1, carbon_dat[,.(PlotID,TotalCarbon,DeadCarbon)], by = "PlotID")
+                    
+```
+
+
+prelim figures
+```{r}
+# Basal area
+BA <- ggplot(value_dat, aes(x=TimeSinceFire, y= BAPH)) +
+  geom_point(aes(colour=Planted)) +
+  geom_smooth(method="lm",aes(colour=Planted,fill=Planted))
+BA
+
+# Basal area diameter classes - this one won't work yet
+BAcl <- ggplot(value_dat, aes(x=DBH_bin, y=BAPH)) +
+  geom_col(aes(colour=Species), position="dodge") +
+  facet_grid(rows=vars(Planted))
+BAcl
+
+# large live trees - this one won't work yet
+lglive <- PlotTree %>%
+  filter(DBH_bin >=20) %>%
+  ggplot(aes(x=DBH_bin, y=SPH)) +
+  geom_point(aes(colour=Planted)) +
+  facet_grid(rows=vars(Planted))
+lglive
+
+# large cottonwood or aspen - this one won't work yet
+liveAcAt <- PlotTree %>%
+  filter(Species=="Ac" | Species=="At") %>%
+  filter(DBH_bin >= 20) %>%
+  ggplot(aes(x=DBH_bin, y=SPH)) +
+  geom_point(aes(colour=Species)) +
+  facet_grid(rows=vars(Planted))
+liveAcAt
+
+# large snags
+snags <- PlotSnags %>% 
+  filter(DBH_bin >= 20) %>%
+  ggplot(aes(x=DBH_bin, y=SPH)) +
+  geom_point(aes(colour=Planted)) +
+  facet_grid(rows=vars(Planted))
+snags
+
+# CWD
+hqi <- ggplot(PlotCWD, aes(x=Planted, y=HQI)) +
+  geom_boxplot()
+hqi
+
+cwdVol <- ggplot(PlotCWD, aes(x=Planted, y=VolHa)) +
+  geom_boxplot()
+cwdVol
+
+cwdMaxDiam <- ggplot(PlotCWD, aes(x=Planted, y=diamMax)) +
+  geom_boxplot()
+cwdMaxDiam
+
+cwdN <- ggplot(PlotCWD, aes(x=Planted, y=PlotN)) +
+  geom_boxplot()
+cwdN
+
+cwdLoc <- cwd %>%
+  mutate(Location_m = if_else(condition = Transect==2,
+                              true=Location_m+50,
+                              false=Location_m)) %>% 
+  ggplot(aes(x=Location_m, y=PlotID)) +
+  geom_point() +
+  facet_grid(rows=vars(Planted))
+cwdLoc # i am able to map cwd piece location - not sure how to put this into piles & dispersed
+
+
+```
+
+
+
+
+
+
+
+
+
+
