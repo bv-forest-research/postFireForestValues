@@ -87,6 +87,34 @@ calc_regen_c <- function(Regen = Regen){
   return(PlotRegen)
 }
 
+calc_regen_biomass <- function(Regen = Regen){
+  
+  ################################## Regeneration carbon ##################################
+  Regen[, Height_class := `Height_class(cm)`][, `Height_class(cm)` := NULL]
+  Regen$Diam_est <- 1 # for 31-130 cm height class
+  Regen$Diam_est[Regen$Height_class == "0-30"] <- 0.1
+  h <- vector()
+  for (i in 1:nrow(Regen)) {
+    h[i] <- treeCalcs::calc_sm_tree_c_Ung(Species = Regen[i, Species],
+                                          Diam_est = 0.1,
+                                          Height_class = Regen[i, Height_class],
+                                          Health = Regen[i, `Live/Dead`])
+  }
+  b <- h * 2 #should be in kg
+  Regen[, AreaSearchM2 := ifelse(`Sub-Plot` == "A1", 100, 50)]
+  Regen[, AreaHa := AreaSearchM2/10000, by = seq_len(nrow(Regen))]
+  #Regen[, MgPerHa_fac := 10 / AreaSearchM2]
+  Regen[, BiomassHa := (b * Tally)/AreaHa]
+  PlotRegen <- Regen[, .(Regen_Kg = sum(BiomassHa)), by = c("PlotID", "Live/Dead")]
+  Regen[CarbonPerHa == 0]
+  Regen[is.na(CarbonPerHa)]
+  PlotRegen <- Regen[, .(Regen_MGHa = sum(CarbonPerHa)), by = c("PlotID", "Live/Dead")]
+  PlotRegen <- dcast(PlotRegen, PlotID ~ `Live/Dead`, value.var = "Regen_MGHa")
+  setnames(PlotRegen, c("L", "D"), c("Regen_L_MGHa", "Regen_D_MGHa"))
+  
+  return(PlotRegen)
+}
+
 
 
 
