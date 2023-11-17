@@ -165,6 +165,17 @@ PlotmerchTrees <- merchTrees[, .(MerchVol = sum(MerchVol)), by = "PlotID"]
 PlotmerchTrees
 ```
 
+## Wildfire:
+```{r}
+
+regen_biomass <- calc_regen_biomass(Regen = Regen)
+fwrite(regen_biomass, "./Inputs/regen_biomass.csv")
+
+```
+
+
+
+
 ## Forest carbon:
 
 need to check all these values line up with our paper. Made slight changes to code!

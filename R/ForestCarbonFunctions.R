@@ -106,11 +106,8 @@ calc_regen_biomass <- function(Regen = Regen){
   #Regen[, MgPerHa_fac := 10 / AreaSearchM2]
   Regen[, BiomassHa := (b * Tally)/AreaHa]
   PlotRegen <- Regen[, .(Regen_Kg = sum(BiomassHa)), by = c("PlotID", "Live/Dead")]
-  Regen[CarbonPerHa == 0]
-  Regen[is.na(CarbonPerHa)]
-  PlotRegen <- Regen[, .(Regen_MGHa = sum(CarbonPerHa)), by = c("PlotID", "Live/Dead")]
-  PlotRegen <- dcast(PlotRegen, PlotID ~ `Live/Dead`, value.var = "Regen_MGHa")
-  setnames(PlotRegen, c("L", "D"), c("Regen_L_MGHa", "Regen_D_MGHa"))
+  PlotRegen <- dcast(PlotRegen, PlotID ~ `Live/Dead`, value.var = "Regen_Kg")
+  setnames(PlotRegen, c("L", "D"), c("Regen_L_KgHa", "Regen_D_KgHa"))
   
   return(PlotRegen)
 }
