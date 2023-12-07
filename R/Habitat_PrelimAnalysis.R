@@ -10,14 +10,14 @@ library(tidyverse)
 library(ggpubr)
 library(svglite)
 
-# load data
-#Plot
+# Load data
+# Plot
 FR_treatments <- fread("./Inputs/FR_Treatments.csv") # has field plot assessed treatments and fire year
 #decided to change FR08 to NP because while it was a plantation, it was burned at low severity and not planted after the fire.
 setnames(FR_treatments, "ID", "PlotID")
 FR_treatments[,TimeSinceFire := 2020 - FIRE_YEAR]
 
-#Tree data:
+# Tree data:
 A1trees <- fread("./Inputs/A1trees.csv")
 B1trees <- fread("./Inputs/B1trees.csv")
 Regen <- fread("./Inputs/Regen.csv")
@@ -45,8 +45,10 @@ PlotMarten <- merge(FR_treatments, PlotHQI)
 # 2. CWD clumps/piles
 source("./R/cwdPilesFunction.R")
 PlotPiles <- cwdPiles(cwd)
+PlotPiles[PlotID=="FR17" & Transect=="1", PileCount := 2] # notes on raw data says in 2 large piles
 PlotPiles <- PlotPiles[,.(PileCount = sum(PileCount)), by = PlotID]
 PlotMarten <- merge(PlotMarten, PlotPiles, all.x=TRUE)
+PlotMarten[is.na(PileCount), PileCount := 0]
 
 # 3. Crown closure >20% and not 100% deciduous (we didn't sample plots that were 100% decid)
 # mean of densiometer readings and multiply by 1.04 to get canopy openness
@@ -69,6 +71,8 @@ columnstoadd <- c("PlotID", "ShrubsB1")
 PlotMarten[shrubCover[ShrubsB1 > 10], (columnstoadd) := mget(columnstoadd), on = "PlotID"]
 PlotMarten[is.na(ShrubsB1), ShrubsB1 := 0]
 
+# Export
+#write.csv(PlotMarten, "./Outputs/MartenHab.csv")
 
 # Figures
 p.hqi <- ggplot(PlotMarten, aes(x=TimeSinceFire, y=HQI, colour=Planted)) +
@@ -158,6 +162,8 @@ columnstoadd <- c("PlotID", "ShrubsB1")
 PlotFisher[shrubCover[ShrubsB1 >= 20], (columnstoadd) := mget(columnstoadd), on = "PlotID"]
 PlotFisher[is.na(ShrubsB1), ShrubsB1 := 0]
 
+# Export
+#write.csv(PlotFisher, "./Outputs/FisherHab.csv")
 
 # Figures
 f.hqi <- ggplot(PlotFisher, aes(x=TimeSinceFire, y=HQI, colour=Planted)) +
@@ -204,13 +210,17 @@ fisher
 
 
 #-- GOSHAWK
-# goshawk require 1) snag and live tree retention, large diameter snags >30cm dbh
-# 2) large CWD, >30cm diameter & >7m long 3) clumped/piled CWD
+# goshawk require 1) large >30cm dbh snag retention and 2) large >30cm dbh live tree retention, 
+# 3) large CWD, >30cm diameter 4) clumped/piled CWD
 
-# 1. large snag >30cm and live tree retention post fire
+# 1. large snag >30cm retention post fire
 # only care about presence, not species, so sum SPH per plot
 PlotGoshawk <- merge(FR_treatments, PlotSnags[DBH_bin >= 30, .(snagSPH=sum(snagSPH)), by=PlotID], all.x=TRUE)
 PlotGoshawk[is.na(snagSPH), snagSPH := 0]
+
+# 2. large diameter >30cm live trees
+PlotGoshawk <- merge(PlotGoshawk, PlotTree[DBH_bin >= 30, .(liveSPH=sum(SPH)), by=PlotID], all.x=TRUE)
+PlotGoshawk[is.na(liveSPH), liveSPH := 0]
 
 # 2. large CWD >30cm diam / quality CWD
 # already calculated for marten & fisher
@@ -218,6 +228,10 @@ PlotGoshawk <- merge(PlotGoshawk, PlotHQI)
 
 # 3. CWD piles
 PlotGoshawk <- merge(PlotGoshawk, PlotPiles, all.x=TRUE)
+PlotGoshawk[is.na(PileCount), PileCount := 0]
+
+# Export
+#write.csv(PlotGoshawk, "./Outputs/GoshawkHab.csv")
 
 #-- SNOWSHOE HARE
 # Snowshoe hare require 1) dense canopy cover and 2) shrub cover >30%, 3) tree density >3000 stems/ha, 
@@ -278,17 +292,23 @@ PlotSquirrel[SxComp <0.6, SxComp := 0][is.na(SxComp), SxComp := 0]
 PlotSquirrel <- merge(PlotSquirrel, PlotCWD[,.(CWDvol=sum(VolHa)), by=PlotID], all.x = TRUE)
 PlotSquirrel[CWDvol < 100, CWDvol := 0]
 
+# Export
+#write.csv(PlotSquirrel, "./Outputs/SquirrelHab.csv")
+
 
 #-- SMALL MAMMALS (deer mice, southern red backed voles)
 # Small mammals require 1) abundant (>100m3/ha) decayed (class 4&5) CWD, 2) high live
 # tree basal area
 
-# 1. >44m3/ha cwd volume decay class 4 & 5
+# 1. >50m3/ha cwd volume decay class 4 & 5
 PlotSmMammal <- merge(FR_treatments, PlotCWD[Decay_class >=4, .(CWDvol=sum(VolHa)), by=PlotID], all.x=TRUE)
-PlotSmMammal[CWDvol < 44, CWDvol := 0][is.na(CWDvol), CWDvol := 0] # confirm with Erica she agrees with 100m3/ha
+PlotSmMammal[CWDvol < 50, CWDvol := 0][is.na(CWDvol), CWDvol := 0] # confirm with Erica she agrees with 100m3/ha
 
 # 2. Tree basal area (> 9cm dbh)
 source("./R/BasalAreaFunctions.R")
 PlotBAPH <- BAPH(A1trees, B1trees)
 PlotSmMammal <- merge(PlotSmMammal, PlotBAPH[DBH >= 9, .(BAPH=sum(BAPH)), by=PlotID], all.x=TRUE)
 PlotSmMammal[is.na(BAPH), BAPH := 0]
+
+# Export
+#write.csv(PlotSmMammal, "./Outputs/SmMammalHab.csv")
