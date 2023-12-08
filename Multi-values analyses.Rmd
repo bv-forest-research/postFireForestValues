@@ -72,6 +72,13 @@ Soils <- fread(paste0(in_dir,"Soils.csv"))
 cwd <- fread(paste0(in_dir,"FireRehabData_CWD.csv"),stringsAsFactors = T)
 fwd <- fread(paste0(in_dir,"FireRehabData_FWD.csv"),stringsAsFactors = T)
 line <- fread(paste0(in_dir,"FireRehabData_TransectDistance.csv"),stringsAsFactors = T) 
+setnames(line, "Plot","PlotID")
+
+# Cover
+densiometer <- fread("./Inputs/FRdensiometer.csv")
+shrubCover <- fread("./Inputs/FRstrataCover.csv") #B1= <2m and B2=2-10m shrub heights)
+setnames(shrubCover, c("Total_B1", "Total_B2"), c("ShrubsB1", "ShrubsB2"))
+
 
 ```
 
@@ -250,21 +257,23 @@ carbon_dat
 
 ```
 
-## OTHER BIODIVERSITY????
+## habitat - change this to run all the quality metrics
 
 ```{r}
 
+
+ 
 ```
 
 
 # Combined values
 need to add a bunch more here when done
 ```{r}
-value_dat1 <- merge(PlotBAtrees, PlotTree_tr,by = "PlotID", all.y = TRUE)
-value_dat1 <- merge(value_dat1, PlotCWD, by = "PlotID")
-value_dat1 <- merge(value_dat1, PlotmerchTrees, by = "PlotID")
-value_dat <- merge(value_dat1, carbon_dat[,.(PlotID,TotalCarbon,DeadCarbon)], by = "PlotID")
-                    
+#parameter-based approach for weighting
+
+
+
+                 
 ```
 
 
