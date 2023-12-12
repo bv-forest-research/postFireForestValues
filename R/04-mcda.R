@@ -1,7 +1,7 @@
 
 
 
-
+in_dir <- ""
 
 #Schwenk et al 2012
 #1. overall goal: manage forests for multiple values
@@ -29,6 +29,8 @@
 
 # sum( mean occupancy not planted species 1/ max occupancy for not planted species 1) / max species occupancy
 # across all prescriptions (planted or not planted)
+
+hab_ind <- fread(file.path())
 
 
 
