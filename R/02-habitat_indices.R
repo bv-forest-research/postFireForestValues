@@ -3,55 +3,50 @@
 # This script summarizes habitat metrics for each species and bins each component 0 or 1. Each metric is added together / species to create
 # one habitat value / species
 
-# Ingrid Farnell, Alana Clason
-# Dec 7, 2023
+# Ingrid Farnell, Alana Clason, Erica Lilles, Jocelyn Biro
+# Dec 12, 2023
 
 # Load libraries
 library(data.table)
 library(tidyverse)
+library(ggpubr)
 
 # Load data
 # Plot
-FR_treatments <- fread("./Inputs/FR_Treatments.csv") # has field plot assessed treatments and fire year
+FR_treatments <- fread("./01-data_inputs/FR_Treatments.csv") # has field plot assessed treatments and fire year
 # decided to change FR08 to NP because while it was a plantation, it was burned at low severity and not planted after the fire.
 setnames(FR_treatments, "ID", "PlotID")
 FR_treatments[,TimeSinceFire := 2020 - FIRE_YEAR]
 
 # Tree data:
-A1trees <- fread("./Inputs/A1trees.csv")
-B1trees <- fread("./Inputs/B1trees.csv")
-Regen <- fread("./Inputs/Regen.csv")
+A1trees <- fread("./01-data_inputs/A1trees.csv")
+B1trees <- fread("./01-data_inputs/B1trees.csv")
+Regen <- fread("./01-data_inputs/Regen.csv")
 
 # Cover
-densiometer <- fread("./Inputs/FRdensiometer.csv")
-shrubCover <- fread("./Inputs/FRstrataCover.csv") #B1= <2m and B2=2-10m shrub heights)
+densiometer <- fread("./01-data_inputs/FRdensiometer.csv")
+shrubCover <- fread("./01-data_inputs/FRstrataCover.csv") #B1= <2m and B2=2-10m shrub heights)
 setnames(shrubCover, c("Total_B1", "Total_B2"), c("ShrubsB1", "ShrubsB2"))
 
 # Woody debris:
-cwd <- fread("./Inputs/FireRehabData_CWD.csv")
-fwd <- fread("./Inputs/FireRehabData_FWD.csv")
-line <- fread("./Inputs/FR_LineTransect.csv")
+cwd <- fread("./01-data_inputs/FireRehabData_CWD.csv")
+fwd <- fread("./01-data_inputs/FireRehabData_FWD.csv")
+line <- fread("./01-data_inputs/FR_LineTransect.csv")
 
 
 #-- MARTEN
-# marten require 1) quality cwd, [REF] 2) cwd clumps/piles [REF], 3) not 100% deciduous and >20% canopy closure [REF]
-# 4) presence of snags [REF] and 5) shrubby understory >10% [REF]
+# 1) quality cwd (Godbout and Ouellet, 2010; Lofroth 1993; Wiebe et al., 2014)
+# 2) not 100% deciduous and >20% canopy closure (Godbout and Ouellet, 2010; Mclaren et al., 2013)
+# 3) presence of snags (Lofroth 1993)
+# 4) shrubby understory 20-60% (Lofroth 1993; Mclaren et al., 2013)
 
-# 1. CWD habitat quality -- using index from van Galen et al. 2019
-source("./R/cwdHabitatQualityIndexFunction.R")
-PlotHQI <- cwdHQI(cwd) #values between 0-100; 0=bad 100=best
-PlotMarten <- merge(FR_treatments, PlotHQI)
-PlotMarten[, HQI:=round(HQI*0.01, digit=1)]
+# 1. CWD quality -- using index from van Galen et al. 2019
+source("./R/01-utils/cwdQualityIndexFunction.R")
+PlotCQI <- cwdQI(cwd) #values between 0-100; 0=bad 100=best
+PlotMarten <- merge(FR_treatments, PlotCQI)
+PlotMarten[, CQI:=round(CQI*0.01, digit=1)]
 
-# 2. CWD clumps/piles
-source("./R/cwdPilesFunction.R")
-PlotPiles <- cwdPiles(cwd)
-PlotPiles[PlotID=="FR17" & Transect=="1", PileCount := 2] # notes on raw data says in 2 large piles
-PlotPiles <- PlotPiles[,.(PileCount = sum(PileCount)), by = PlotID]
-PlotMarten <- merge(PlotMarten, PlotPiles, all.x=TRUE)
-PlotMarten[, PileCount := ifelse(PileCount > 0, 1, 0)][is.na(PileCount), PileCount := 0] # if plot has a pile of CWD = 1, else 0
-
-# 3. Crown closure >20% and not 100% deciduous (we didn't sample plots that were 100% decid)
+# 2. Crown closure >20% and not 100% deciduous (we didn't sample plots that were 100% decid)
 # mean of densiometer readings and multiply by 1.04 to get canopy openness
 PlotCrown <- densiometer[,.(SubPlotOpen=mean(Densiometer)), by = c("PlotID", "SubPlot")]
 PlotCrown <- PlotCrown[,.(CrownOpen=mean(SubPlotOpen)*1.04), by = PlotID]
@@ -61,33 +56,40 @@ PlotMarten <- merge(PlotMarten, PlotCrown, all.x=TRUE)
 PlotMarten[, CrownClos := ifelse(CrownClos >= 20, 1, 0)] # closure >20% = 1, else 0
 PlotMarten[is.na(CrownClos), CrownClos := 0][, CrownOpen := NULL]
 
-# 4. Presence of snags >20cm dbh
-source("./R/DensityFunctions.R")
+# 3. Presence of snags >20cm dbh
+source("./R/01-utils/DensityFunctions.R")
 PlotSnags <- SnagDensity(A1trees, B1trees)
 # only care about presence >20cm, not species, so sum SPH per plot
 PlotMarten <- merge(PlotMarten, PlotSnags[DBH_bin >= 20, .(snagSPH=sum(snagSPH)), by=PlotID], all.x=TRUE)
 PlotMarten[, snags := ifelse(is.na(snagSPH), 0, 1)] # snags present = 1, else 0
 PlotMarten[, snagSPH := NULL]
 
-# 5. Shrub cover (B1= <2m and B2=2-10m shrub heights), B1 > 10%
+# 4. Shrub cover (B1= <2m and B2=2-10m shrub heights), B1 > between 20 - 60%
 columnstoadd <- c("PlotID", "ShrubsB1")
 PlotMarten[shrubCover, (columnstoadd) := mget(columnstoadd), on = "PlotID"]
-PlotMarten[, ShrubsB1 := ifelse(ShrubsB1 >= 10, 1, 0)][is.na(ShrubsB1), ShrubsB1 := 0] # shrubs 0-2m >10% cover = 1, else 0
+PlotMarten[, ShrubsB1 := ifelse(ShrubsB1 >= 20 & ShrubsB1 <= 60, 1, 0)][is.na(ShrubsB1), ShrubsB1 := 0] # shrubs 0-2m >10% cover = 1, else 0
 
 # MARTEN HABITAT INDEX
-PlotMarten[, MartenHabitat := sum(HQI, PileCount, CrownClos, snags, ShrubsB1), by=PlotID]
+# 1 * Crown closure (Godbout and Ouellet, 2010; Mclaren et al., 2013)
+# 1 * CQI (Godbout and Ouellet, 2010; Mclaren et al., 2013; Sullivan ..)
+# 0.6 * shrubsB1 (Lofroth 1993; Mclaren et al., 2013)
+# 0.5 * snags (Lofroth 1993)
+PlotMarten[, MartenHabitat := sum(1*(CrownClos), 1*(CQI), 0.6*(ShrubsB1), 0.5*(snags)), by=PlotID]
 
 
 #-- FISHER
-# fisher require 1) CWD quality similar to marten 2) large diseased and decaying 
-# aspen and cottonwood (>30 cm dbh) 3) Ac leading or secondary or tertiary or Sx as 
-# only species 4) QMD >=19.6 5) Crown closure >=30%  6) shrub cover > 20%
+# 1) quality CWD (movement)
+# 2) large diseased and decaying aspen and cottonwood (>30 cm dbh) (denning)
+# 3) Ac leading or secondary or tertiary or Sx as only species 
+# 4) QMD >=19.6 
+# 5) Crown closure >=30%  
+# 6) shrub cover > 20%
 # all metrics are from www.bcfisherhabitat.ca
 
-# 1. CWD quality similar to marten 
+# 1. CWD quality
 # already calculated this for marten
-PlotFisher <- merge(FR_treatments, PlotHQI)
-PlotFisher[, HQI:=round(HQI*0.01, digit=1)]
+PlotFisher <- merge(FR_treatments, PlotCQI)
+PlotFisher[, CQI:=round(CQI*0.01, digit=1)]
 
 # 2. large diseased and decaying aspen and cottonwood (>30 cm dbh)
 # we sampled mesic sites, which isn't normally where large At/Ac grow.. should we remove this?
@@ -134,39 +136,45 @@ PlotFisher[shrubCover, (columnstoadd) := mget(columnstoadd), on = "PlotID"]
 PlotFisher[, ShrubsB1 := ifelse(ShrubsB1 >=20, 1, 0)][is.na(ShrubsB1), ShrubsB1 := 0] # shrubs (0-2m) >= 20% cover = 1, else 0
 
 # FISHER HABITAT INDEX
-PlotFisher[, FisherHabitat := sum(HQI, lgAtSPH, decidSx, QMD, CrownClos, ShrubsB1), by=PlotID]
+PlotFisher[, FisherHabitat := sum(CQI, lgAtSPH, decidSx, QMD, CrownClos, ShrubsB1), by=PlotID]
 
 
 #-- GOSHAWK
-# goshawk require 1) large >30cm dbh snag retention and 2) large >30cm dbh live tree retention, 
-# 3) large CWD, >30cm diameter 4) clumped/piled CWD
+# 1) large >30cm dbh snag retention 
+# 2) large >30cm dbh live tree retention, 
+# 3) large CWD, >30cm diameter 
+# 4) clumped/piled CWD
 # metrics are from a conversation Ingrid had with Frank Doyle Oct 6, 2023
 
-# 1. large snag >30cm retention post fire
-# only care about presence, not species, so sum SPH per plot
+# 1. large snag >30cm >12/ha retention post fire
 PlotGoshawk <- merge(FR_treatments, PlotSnags[DBH_bin >= 30, .(snagSPH=sum(snagSPH)), by=PlotID], all.x=TRUE)
-PlotGoshawk[, snagSPH := ifelse(snagSPH > 0, 1, 0)][is.na(snagSPH), snagSPH := 0] # snags >=30cm dbh present =1, else 0
+PlotGoshawk[, snagSPH := ifelse(snagSPH > 12, 1, 0)][is.na(snagSPH), snagSPH := 0] # snags >=30cm dbh present =1, else 0
 
-# 2. large diameter >30cm live trees
+# 2. large diameter >30cm > 12/ha live trees
 PlotGoshawk <- merge(PlotGoshawk, PlotTree[DBH_bin >= 30, .(liveSPH=sum(SPH)), by=PlotID], all.x=TRUE)
-PlotGoshawk[, liveSPH := ifelse(liveSPH > 0, 1, 0)][is.na(liveSPH), liveSPH := 0] # live trees >=30cm dbh present = 1, else 0
+PlotGoshawk[, liveSPH := ifelse(liveSPH > 12, 1, 0)][is.na(liveSPH), liveSPH := 0] # live trees >=30cm dbh present = 1, else 0
 
-# 2. large CWD >30cm diam / quality CWD
-# already calculated for marten & fisher
-PlotGoshawk <- merge(PlotGoshawk, PlotHQI)
-PlotGoshawk[, HQI:=round(HQI*0.01, digit=1)] 
+# 3. quality CWD
+PlotGoshawk <- merge(PlotGoshawk, PlotCQI)
+PlotGoshawk[, CQI:=round(CQI*0.01, digit=1)] 
 
-# 3. CWD piles
+# 4. CWD piles
+source("./R/01-utils/cwdPilesFunction.R")
+PlotPiles <- cwdPiles(cwd)
+PlotPiles[PlotID=="FR17" & Transect=="1", PileCount := 2] # notes on raw data says in 2 large piles
+PlotPiles <- PlotPiles[,.(PileCount = sum(PileCount)), by = PlotID]
 PlotGoshawk <- merge(PlotGoshawk, PlotPiles, all.x=TRUE)
 PlotGoshawk[, PileCount := ifelse(PileCount > 0, 1, 0)][is.na(PileCount), PileCount := 0] # if plot has cwd piles = 1, else 0
 
 # GOSHAWK HABITAT INDEX
-PlotGoshawk[, GoshawkHabitat := sum(snagSPH, liveSPH, HQI, PileCount), by=PlotID]
+PlotGoshawk[, GoshawkHabitat := sum((1*snagSPH), (1*liveSPH), (0.8*CQI), (0.7*PileCount)), by=PlotID]
 
 
 #-- SNOWSHOE HARE
-# Snowshoe hare require 1) canopy cover >= 30% (Berg et al., 2012; Cheng et al. 2015) and 2) shrub cover (0-2m) >=30% (Bois et al., 2012; Gigliotti et al., 2018), 
-# 3) tree density >=3000 stems/ha (Chisholm 2023), # 4) abundant CWD (Berg et al., 2012), and 5) browse (Joc)
+# 1) canopy cover >= 30% (Berg et al., 2012; Cheng et al. 2015)
+# 2) shrub cover (0-2m) >=30% (Bois et al., 2012; Gigliotti et al., 2018), 
+# 3) tree density >=3000 stems/ha (Chisholm 2023), 
+# 4) abundant CWD (Berg et al., 2012), and 5) browse (Joc)
 
 # 1. Canopy cover >= 30%
 PlotHare <- merge(FR_treatments, PlotCrown, all.x = TRUE)
@@ -183,7 +191,7 @@ PlotHare <- merge(PlotHare, PlotTree[,. (SPH=sum(SPH)), by=c("PlotID")], all.x=T
 PlotHare <- PlotHare[, SPH := ifelse(SPH >= 3000, 1, 0)][is.na(SPH), SPH := 0] # tree density >= 3,000 sph = 1, else 0
 
 # 4. Presence of CWD
-source("./R/cwdVolumeFunction.R")
+source("./R/01-utils/cwdVolumeFunction.R")
 PlotCWD <- cwdVol(cwd, line)
 PlotHare <- merge(PlotHare, PlotCWD[,. (CWDvol=sum(VolHa)), by=c("PlotID")], all.x=TRUE)
 PlotHare[, CWDvol := ifelse(CWDvol > 0 , 1, 0)] # if CWd present = 1, else 0
@@ -195,9 +203,12 @@ PlotHare[, HareHabitat := sum(CrownClos, ShrubsB1, SPH, CWDvol), by=PlotID]
 
 
 #-- RED SQUIRRELS
-# Red squirrels require 1) tree canopy cover >=30% (Aubry et al., 2003), 2) large conifers >=30cm dbh (Fisher and Bradbury, 2006; Holloway and Malcolm, 2006), 
-# 3) large snags >=40cm (Fisher and Wilkinson, 2005), 4) tree composition 50% conifer (Fisher and Bradbury, 2006),
-# 5) 60% spruce preferred (Fisher and Bradbury, 2006), and 6) abundant cwd >=100m3 (Bakker 2006)
+# 1) tree canopy cover >=30% (Aubry et al., 2003), 
+# 2) large conifers >=30cm dbh (Fisher and Bradbury, 2006; Holloway and Malcolm, 2006), 
+# 3) large snags >=40cm (Fisher and Wilkinson, 2005), 
+# 4) tree composition 50% conifer (Fisher and Bradbury, 2006),
+# 5) 60% spruce preferred (Fisher and Bradbury, 2006), and 
+# 6) abundant cwd >=100m3 (Bakker 2006)
 
 # 1. Tree canopy cover >=30%
 PlotSquirrel <- merge(FR_treatments, PlotCrown, all.x = TRUE)
@@ -234,7 +245,7 @@ PlotSquirrel[, SquirrelHabitat := sum(CrownClos, lgConSPH, snagSPH, conComp, SxC
 
 
 #-- SMALL MAMMALS (deer mice, southern red backed voles)
-# Small mammals require 1) abundant (>50m3/ha) decayed (class 4&5) CWD (Fauteaux et al., 2012; Fauteux et al., 2013), and
+# 1) abundant (>50m3/ha) decayed (class 4&5) CWD (Fauteaux et al., 2012; Fauteux et al., 2013), and
 # 2) live tree  (>9 cm dbh) basal area >= 15 m2/ha(Fauteux., 2013; Sullivan and Sullivan, 2002)
 
 # 1. >50m3/ha cwd volume decay class 4 & 5
@@ -242,13 +253,44 @@ PlotSmMammal <- merge(FR_treatments, PlotCWD[Decay_class >=4, .(CWDvol=sum(VolHa
 PlotSmMammal[, CWDvol := ifelse(CWDvol>= 50, 1, 0)][is.na(CWDvol), CWDvol := 0] # decayed (classes 4 &5) cwd >= 50 m3/ha = 1, else 0
 
 # 2. Tree basal area (>9 cm dbh)
-source("./R/BasalAreaFunctions.R")
+source("./R/01-utils/BasalAreaFunctions.R")
 PlotBAPH <- BAPH(A1trees, B1trees)
 PlotSmMammal <- merge(PlotSmMammal, PlotBAPH[DBH >= 9, .(BAPH=sum(BAPH)), by=PlotID], all.x=TRUE)
 PlotSmMammal[, BAPH := ifelse(BAPH >= 15 , 1, 0)][is.na(BAPH), BAPH := 0]
 
 # SMALL MAMMAL HABITAT INDEX
 PlotSmMammal[, SmMammalHabitat := sum(CWDvol, BAPH), by=PlotID]
+
+
+#-- GROUSE, SPRUCE & RUFFED
+# 1) canopy cover >60% (Anich 2013; Casabona et al. 2021),
+# 2) % conifer species >80% (Anich 2013) (spruce) OR deciduous density >4,900 & <14,800 sph (Cade and Sousa 1985) (ruffed)
+# 3) shrub (1-2m) cover >20% (Anich 2013; Casabona et al. 2021)
+
+# 1. canopy cover >60%
+PlotGrouse <- merge(FR_treatments, PlotCrown, all.x = TRUE)
+PlotGrouse[, CrownClos := ifelse(CrownClos >=60, 1, 0)] # crown closure >= 60% = 1, else 0
+PlotGrouse[is.na(CrownClos), CrownClos := 0][, CrownOpen := NULL]
+
+# 2. % conifer species >=80% (spruce grouse) OR deciduous density >4,900 <14,800 sph (ruffed grouse)
+treeComp <- PlotTree[, totalSPH := sum(SPH), by=c("PlotID")]
+treeComp <- PlotTree[, .(spComp=sum(SPH)/totalSPH), by=c("PlotID", "Species")]
+treeComp <- unique(treeComp)
+# conifer
+PlotGrouse <- merge(PlotGrouse, treeComp[Species %in% c("Sx", "Pl", "Bl"),
+                                         .(conComp=sum(spComp)), by=PlotID], all.x=TRUE)
+# deciduous
+PlotGrouse <- merge(PlotGrouse, PlotTree[Species %in% c("At", "Ac", "Ep"), 
+                                         .(decSPH=sum(SPH)), by=PlotID], all.x=TRUE) 
+PlotGrouse[, Comp := ifelse(conComp >= 0.8 | (decSPH > 4900 & decSPH < 14800), 1, 0)][is.na(Comp), Comp := 0] # tree composition >=80% conifer = 1, else 0
+
+# 3. shrub (1-2m) cover >20%
+columnstoadd <- c("PlotID", "ShrubsB1")
+PlotGrouse[shrubCover, (columnstoadd) := mget(columnstoadd), on = "PlotID"]
+PlotGrouse[, ShrubsB1 := ifelse(ShrubsB1 >=20, 1, 0)][is.na(ShrubsB1), ShrubsB1 := 0] # shrubs (0-2m) >= 20% cover = 1, else 0
+
+# GROUSE HABITAT INDEX
+PlotGrouse[, GrouseHabitat := sum(CrownClos, Comp, ShrubsB1), by=PlotID]
 
 
 #-- ALL SPECIES 
@@ -258,6 +300,29 @@ HabitatIndicies <- HabitatIndicies[PlotGoshawk, ("GoshawkHabitat") := mget("Gosh
 HabitatIndicies <- HabitatIndicies[PlotHare, ("HareHabitat") := mget("HareHabitat"), on = "PlotID"]
 HabitatIndicies <- HabitatIndicies[PlotSquirrel, ("SquirrelHabitat") := mget("SquirrelHabitat"), on = "PlotID"]
 HabitatIndicies <- HabitatIndicies[PlotSmMammal, ("SmMammalHabitat") := mget("SmMammalHabitat"), on = "PlotID"]
+HabitatIndicies <- HabitatIndicies[PlotGrouse, ("GrouseHabitat") := mget("GrouseHabitat"), on = "PlotID"]
 
 # export 
-#write.csv(HabitatIndicies, "./Outputs/HabitatIndicies.csv")
+#write.csv(HabitatIndicies, "./02-prepped_values/HabitatIndicies.csv")
+
+
+
+#-----------------------
+#-- Preliminary Figures
+
+m <- ggplot(HabitatIndicies, aes(x = TimeSinceFire)) +
+  geom_smooth(aes(y = MartenHabitat, color = Planted))
+f <- ggplot(HabitatIndicies, aes(x = TimeSinceFire)) +
+  geom_smooth(aes(y = FisherHabitat, color = Planted))
+g <- ggplot(HabitatIndicies, aes(x = TimeSinceFire)) +
+  geom_smooth(aes(y = GoshawkHabitat, color = Planted))
+sm <- ggplot(HabitatIndicies, aes(x = TimeSinceFire)) +
+  geom_smooth(aes(y = SmMammalHabitat, color = Planted))
+s <- ggplot(HabitatIndicies, aes(x = TimeSinceFire)) +
+  geom_smooth(aes(y = SquirrelHabitat, color = Planted))
+gr <- ggplot(HabitatIndicies, aes(x = TimeSinceFire)) +
+  geom_smooth(aes(y = GrouseHabitat, color = Planted))
+
+plot <- ggarrange(m, f, g, sm, s, gr,
+                   ncol = 1)
+plot
