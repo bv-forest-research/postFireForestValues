@@ -1,7 +1,7 @@
+# integrate across values
+library(data.table)
 
-
-
-in_dir <- ""
+in_dir <- "02-prepped_values"
 
 #Schwenk et al 2012
 #1. overall goal: manage forests for multiple values
@@ -30,9 +30,43 @@ in_dir <- ""
 # sum( mean occupancy not planted species 1/ max occupancy for not planted species 1) / max species occupancy
 # across all prescriptions (planted or not planted)
 
-hab_ind <- fread(file.path())
+hab_ind <- fread(file.path(in_dir,"HabitatIndicies.csv"))
 
+hab_ind <- hab_ind[,.(PlotID, Planted, TimeSinceFire,MartenHabitat, FisherHabitat, GoshawkHabitat,
+                      HareHabitat, SquirrelHabitat, SmMammalHabitat)]
 
+hab_vars <- names(hab_ind)[!names(hab_ind) %in% c("PlotID","Planted","TimeSinceFire")]
+
+scale_values <- function(x){(x-min(x))/(max(x)-min(x))}
+
+hab_ind[, (hab_vars) := lapply(.SD, scale_values), .SDcols = hab_vars]
+
+#x = habitat score
+part_utils <- function(x){sum(mean(x-np)/ max(x-p))/max(x)}
+
+#fisher:
+fisher_np <- (hab_ind[Planted == "NP",
+                      mean(FisherHabitat)]/hab_ind[Planted == "P",
+                              max(FisherHabitat)])/hab_ind[,max(FisherHabitat)]
+fisher_p <- (hab_ind[Planted == "P",
+                      mean(FisherHabitat)]/hab_ind[Planted == "NP", 
+                            max(FisherHabitat)])/hab_ind[,max(FisherHabitat)]
+
+#marten:
+marten_np <- (hab_ind[Planted == "NP",
+                      mean(MartenHabitat)]/hab_ind[Planted == "P",
+                              max(MartenHabitat)])/hab_ind[,max(MartenHabitat)]
+merten_p <- (hab_ind[Planted == "P",
+                     mean(MartenHabitat)]/hab_ind[Planted == "NP",
+                            max(MartenHabitat)])/hab_ind[,max(MartenHabitat)]
+
+#marten:
+marten_np <- (hab_ind[Planted == "NP",
+                      mean(MartenHabitat)]/hab_ind[Planted == "P",
+                             max(MartenHabitat)])/hab_ind[,max(MartenHabitat)]
+merten_p <- (hab_ind[Planted == "P",
+                     mean(MartenHabitat)]/hab_ind[Planted == "NP",
+                             max(MartenHabitat)])/hab_ind[,max(MartenHabitat)]
 
 #2. Total utility
 #weights equal, and then weights unbalanced
@@ -41,4 +75,4 @@ hab_ind <- fread(file.path())
 
 #we don't need part 3 because we didn't ahve different site types
 
-# maximum utlity under each weiting scenario.
+# maximum utility under each weighting scenario.
