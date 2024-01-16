@@ -76,6 +76,18 @@ PlotMarten[, ShrubsB1 := ifelse(ShrubsB1 >= 20 & ShrubsB1 <= 60, 1, 0)][is.na(Sh
 # 0.5 * snags (Lofroth 1993)
 PlotMarten[, MartenHabitat := sum(1*(CrownClos), 1*(CQI), 0.6*(ShrubsB1), 0.5*(snags)), by=PlotID]
 
+#example of how to write the function similar to the Monkennen appendix
+#w_age_fn <- function(age){
+#  if(age < 20){
+#    w_age <- 0
+#  }else if(age > 20 & age <= 30){
+#    w_age <- (0.1*age) - 2
+#  }else if(age > 30 * age <= 60){
+#    w_age <- 1
+#  }else{
+#    w_age <- -0.012*age + 1.72
+#  }
+#}
 
 #-- FISHER
 # 1) quality CWD (movement)
@@ -326,3 +338,39 @@ gr <- ggplot(HabitatIndicies, aes(x = TimeSinceFire)) +
 plot <- ggarrange(m, f, g, sm, s, gr,
                    ncol = 1)
 plot
+
+#alana modified -----------------------------------------------------------------------
+# change the layout
+#update so all indices are 0-1
+hab_ind <- melt(HabitatIndicies, id.vars = c("PlotID","Planted","TimeSinceFire"),
+                measure.vars = c("MartenHabitat", "FisherHabitat", "GoshawkHabitat", 
+                                 "HareHabitat", "SquirrelHabitat",
+                                 "SmMammalHabitat", "GrouseHabitat"))
+setnames(hab_ind, c("variable","value"), c("species","habitat_index"))
+
+#Scale the indices between 0 and 1
+scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
+
+hab_ind[,hab_ind_sc := scale_fn(habitat_index),by = .(species)]
+
+custom_color_scale <- c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#a6cee3", "#b15928")
+
+
+ggplot(data= hab_ind)+
+  geom_point(aes(x = TimeSinceFire, y = hab_ind_sc, colour = species))+
+  geom_smooth(aes(x = TimeSinceFire, y = hab_ind_sc, colour = species), alpha = 0.2)+
+  labs(color = "Wildlife species")+
+  scale_color_manual(labels = c("Marten", "Fisher", "Goshawk", "Hare", "Squirrel",
+                                "Small mammal", "Grouse"), 
+                     values = custom_color_scale)+
+  xlab("Time since fire")+
+  ylab("Habitat index")+
+  facet_wrap(~Planted)
+  
+ 
+  
+
+
+
+
+
