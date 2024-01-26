@@ -459,12 +459,8 @@ hab_ind <- melt(HabitatIndices, id.vars = c("PlotID","Planted","TimeSinceFire"),
                                  "GrouseHabitat", "GrizzlyHabitat"))
 setnames(hab_ind, c("variable","value"), c("species","habitat_index"))
 
-#Scale the indices between 0 and 1
-scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 
-hab_ind[,hab_ind_sc := scale_fn(habitat_index),by = .(species)]
 
-custom_color_scale <- c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#a6cee3", "#b15928")
 
 
 ggplot(data= hab_ind)+
@@ -480,8 +476,3 @@ ggplot(data= hab_ind)+
   
  
   
-
-
-
-
-
