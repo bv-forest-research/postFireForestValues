@@ -315,7 +315,6 @@ HabitatIndicies <- HabitatIndicies[PlotSmMammal, ("SmMammalHabitat") := mget("Sm
 HabitatIndicies <- HabitatIndicies[PlotGrouse, ("GrouseHabitat") := mget("GrouseHabitat"), on = "PlotID"]
 
 # export 
-#write.csv(HabitatIndicies, "./02-prepped_values/HabitatIndicies.csv")
 
 
 
@@ -339,36 +338,6 @@ plot <- ggarrange(m, f, g, sm, s, gr,
                    ncol = 1)
 plot
 
-#alana modified -----------------------------------------------------------------------
-# change the layout
-#update so all indices are 0-1
-hab_ind <- melt(HabitatIndicies, id.vars = c("PlotID","Planted","TimeSinceFire"),
-                measure.vars = c("MartenHabitat", "FisherHabitat", "GoshawkHabitat", 
-                                 "HareHabitat", "SquirrelHabitat",
-                                 "SmMammalHabitat", "GrouseHabitat"))
-setnames(hab_ind, c("variable","value"), c("species","habitat_index"))
-
-#Scale the indices between 0 and 1
-scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
-
-hab_ind[,hab_ind_sc := scale_fn(habitat_index),by = .(species)]
-
-custom_color_scale <- c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#a6cee3", "#b15928")
-
-
-ggplot(data= hab_ind)+
-  geom_point(aes(x = TimeSinceFire, y = hab_ind_sc, colour = species))+
-  geom_smooth(aes(x = TimeSinceFire, y = hab_ind_sc, colour = species), alpha = 0.2)+
-  labs(color = "Wildlife species")+
-  scale_color_manual(labels = c("Marten", "Fisher", "Goshawk", "Hare", "Squirrel",
-                                "Small mammal", "Grouse"), 
-                     values = custom_color_scale)+
-  xlab("Time since fire")+
-  ylab("Habitat index")+
-  facet_wrap(~Planted)
-  
- 
-  
 
 
 
