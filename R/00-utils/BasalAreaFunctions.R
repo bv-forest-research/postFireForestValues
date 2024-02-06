@@ -1,8 +1,6 @@
 
-
-
 # Basal Area Per Hectare function
-BAPH <- function(treeDat_a1,treeDat_b1){
+BAPHlive <- function(treeDat_a1,treeDat_b1){
   ##Trees
   FR_LiveTrees <- rbind(A1trees[Tree_class < 3, .(PlotID, `Sub-plot`, Species, 
                                                   Tree_class, DBH, Height, Notes)],
@@ -22,9 +20,30 @@ BAPH <- function(treeDat_a1,treeDat_b1){
   
   PlotTrees <- FR_LiveTrees[, .(PlotID, Species, DBH, Height, BAPH)]
   return(PlotTrees)
-  
 }
 
+# Basal area dead trees
+BAPHdead <- function(treeDat_a1,treeDat_b1){
+  ##Trees
+  FR_DeadTrees <- rbind(A1trees[Tree_class >= 3, .(PlotID, `Sub-plot`, Species, 
+                                                  Tree_class, DBH, Height, Notes)],
+                        B1trees[Tree_class >= 3, .(PlotID, `Sub-plot`, Species, 
+                                                  Tree_class, DBH, Height)], fill = TRUE)
+  FR_DeadTrees <- FR_DeadTrees[!is.na(DBH)]
+  #deal with the different plot sizes and areas surveyed
+  FR_DeadTrees[, AreaSearchM2 := ifelse(`Sub-plot` == "A1", 100, 
+                                        ifelse(`Sub-plot` == "A2", 50, 400))]
+  FR_DeadTrees[Notes == "only 1/4 of A1", AreaSearchM2 := 100 / 4]
+  FR_DeadTrees[Notes == "only 1/2 of A1", AreaSearchM2 := 100 / 2]
+  FR_DeadTrees[Notes == "only 1/4 of A2", AreaSearchM2 := 50 / 4]
+  FR_DeadTrees[, PHF := 10000 / AreaSearchM2] #accounting for smaller search areas
+  
+  FR_DeadTrees[, BA := pi * (DBH ^ 2 / 40000)]
+  FR_DeadTrees[, BAPH := BA * PHF]
+  
+  PlotTrees <- FR_DeadTrees[, .(PlotID, Species, DBH, Height, BAPH)]
+  return(PlotTrees)
+}
 
 BAPHsizeCl <- function(treeDat_a1,treeDat_b1){
   ##Trees
