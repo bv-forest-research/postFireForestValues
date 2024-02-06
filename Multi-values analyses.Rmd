@@ -32,7 +32,7 @@ library(tidyverse)
 
 library(treeCalcs)
 
-files_to_source <- list.files("./R", pattern = "Function", 
+files_to_source <- list.files("./R/00-utils/", pattern = "Function", 
                               full.names = TRUE)
 sapply(files_to_source, source)
 
@@ -42,7 +42,7 @@ sapply(files_to_source, source)
 Pathways
 ```{r}
 
-in_dir <- "./Inputs/"
+in_dir <- "01-data_inputs"
 out_dir <- "./Outputs/"
 
 ```
@@ -51,7 +51,7 @@ out_dir <- "./Outputs/"
 Plot treatments (planted, time since fire etc.), and all data
 
 ```{r}
-FR_treatments <- fread(paste0(in_dir,"FR_Treatments.csv"))
+FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
 
 #Plot treatment cleaning
 FR_treatments[,`:=`(PlotID = as.factor(ID), Planted = as.factor(Planted))]
@@ -61,22 +61,22 @@ plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire)]
 
 
 #Tree data:
-A1trees <- fread(paste0(in_dir,"A1trees.csv"))
-B1trees <- fread(paste0(in_dir,"B1trees.csv"))
-Regen <- fread(paste0(in_dir,"Regen.csv"))
+A1trees <- fread(file.path(in_dir,"A1trees.csv"))
+B1trees <- fread(file.path(in_dir,"B1trees.csv"))
+Regen <- fread(file.path(in_dir,"Regen.csv"))
 
 #Soils data:
-Soils <- fread(paste0(in_dir,"Soils.csv"))
+Soils <- fread(file.path(in_dir,"Soils.csv"))
 
 #Woody debris:
-cwd <- fread(paste0(in_dir,"FireRehabData_CWD.csv"),stringsAsFactors = T)
-fwd <- fread(paste0(in_dir,"FireRehabData_FWD.csv"),stringsAsFactors = T)
-line <- fread(paste0(in_dir,"FireRehabData_TransectDistance.csv"),stringsAsFactors = T) 
+cwd <- fread(file.path(in_dir,"FireRehabData_CWD.csv"),stringsAsFactors = T)
+fwd <- fread(file.path(in_dir,"FireRehabData_FWD.csv"),stringsAsFactors = T)
+line <- fread(file.path(in_dir,"FireRehabData_TransectDistance.csv"),stringsAsFactors = T) 
 setnames(line, "Plot","PlotID")
 
 # Cover
-densiometer <- fread("./Inputs/FRdensiometer.csv")
-shrubCover <- fread("./Inputs/FRstrataCover.csv") #B1= <2m and B2=2-10m shrub heights)
+densiometer <- fread(file.path(in_dir,"FRdensiometer.csv"))
+shrubCover <- fread(file.path(in_dir,"FRstrataCover.csv")) #B1= <2m and B2=2-10m shrub heights)
 setnames(shrubCover, c("Total_B1", "Total_B2"), c("ShrubsB1", "ShrubsB2"))
 
 
@@ -169,7 +169,13 @@ merchTrees[is.na(MerchVol), MerchVol:= 0] #check the function to make sure the N
 
 PlotmerchTrees <- merchTrees[, .(MerchVol = sum(MerchVol)), by = "PlotID"]
 
-PlotmerchTrees
+#rescale even if between 0 and 1??? 
+scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
+cnames <- c("MerchVol")
+PlotmerchTrees[, (cnames) := lapply(.SD, scale_fn), .SDcols = cnames]
+
+write.csv(PlotmerchTrees, "./02-prepped_values/merch_vol_indi.csv", row.names = F)
+ 
 ```
 
 ## Wildfire:
@@ -248,13 +254,72 @@ carbon_dat <- merge(carbon_dat,carbon_dat_m[CarbonSource=="LiveMgHa"|
 
 carbon_dat
 
+scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
+
+cnames <- c("TotalCarbon","DeadCarbon","LiveCarbon")
+carbon_dat[, (cnames) := lapply(.SD, scale_fn), .SDcols = cnames]
+carbon_dat[,`:=`(Planted = NULL, TimeSinceFire=NULL)]
+write.csv(carbon_dat, "./02-prepped_values/carbon_indi.csv", row.names = F)
+
 ```
 
 
-## Moose habitat
+## Fuels
 
 ```{r}
 
+fuels_dt <- fread("D:/Github/postFireForestValues/ccpDF-CCP_AllWx_Results_CFIS_O1btoS1_RegenToSFC.csv")
+fuels_dt <- merge(fuels_dt, plot_treatments, 
+                  by.x = "Plot", by.y = "PlotID", all.x = TRUE, allow.cartesian = TRUE)
+fuels_dt[, ymd_wx := ymd(wxDate)]
+fuels_dt[, m_wx := month(ymd_wx)]
+fuels_dt[, d_wx := day(ymd_wx)]
+fuels_dt[, md_wx := m_wx*100 + d_wx]
+
+ggplot(fuels_dt)+
+  geom_boxplot(aes(x = Planted, y = probability_ccp))
+  
+
+ggplot(fuels_dt)+
+  geom_boxplot(aes(x = Planted, y = ros_ccp))
+  
+ggplot(fuels_dt)+
+  geom_boxplot(aes(x = fire_type_ccp, y = cfb))+
+  facet_wrap(~Planted)
+unique(fuels_dt$fire_type_ccp)
+
+
+ggplot(fuels_dt)+
+  geom_point(aes(x= md_wx, y = percentile))+
+  geom_smooth(aes(x= md_wx, y = percentile, colour = Planted))
+  facet_grid(c("Planted","year"))
+
+mn_fwi <- fuels_dt[, .(mn_fwi = mean(percentile)), by = .(Plot, Planted, md_wx, TimeSinceFire)]  
+mn_fwi[,TSF := ifelse(TimeSinceFire <10, "5-10",
+                ifelse(TimeSinceFire <20, "10-20",
+                  ifelse(TimeSinceFire <30, "20-30",
+                   ifelse(TimeSinceFire <40, "30-40",
+                    ifelse(TimeSinceFire <50, "40-50",
+                      ifelse(TimeSinceFire<60, "50-60",
+                             "60+"))))))]
+
+
+ggplot(mn_fwi)+
+  geom_point(aes(x= md_wx, y = mn_fwi))+
+  geom_smooth(aes(x= md_wx, y = mn_fwi, colour = TSF), alpha = 0)+
+  facet_wrap(~Planted)
+  
+
+#just get some index to play with:
+fuels_ind <- fuels_dt[, .(m_ccp = median(probability_ccp)), by = "Plot"]
+setnames(fuels_ind, "Plot","PlotID")
+#rescale even if between 0 and 1??? 
+scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
+cnames <- c("m_ccp")
+fuels_ind[, (cnames) := lapply(.SD, scale_fn), .SDcols = cnames]
+
+write.csv(fuels_ind, "./02-prepped_values/fuels_indi.csv",row.names = F)
+  
 ```
 
 ## habitat - change this to run all the quality metrics
@@ -341,6 +406,48 @@ cwdLoc <- cwd %>%
   geom_point() +
   facet_grid(rows=vars(Planted))
 cwdLoc # i am able to map cwd piece location - not sure how to put this into piles & dispersed
+
+
+
+
+#alana modified -----------------------------------------------------------------------
+# change the layout
+#update so all indices are 0-1
+hab_ind <- melt(HabitatIndicies, id.vars = c("PlotID","Planted","TimeSinceFire"),
+                measure.vars = c("MartenHabitat", "FisherHabitat", "GoshawkHabitat", 
+                                 "HareHabitat", "SquirrelHabitat",
+                                 "SmMammalHabitat", "GrouseHabitat"))
+setnames(hab_ind, c("variable","value"), c("species","habitat_index"))
+
+#Scale the indices between 0 and 1
+scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
+
+hab_ind[,hab_ind_sc := scale_fn(habitat_index),by = .(species)]
+hab_ind_d <- dcast(hab_ind, PlotID + Planted + TimeSinceFire ~ species,
+                   value.var = "hab_ind_sc")
+hab_ind_d <- hab_ind_d[,.(PlotID, MartenHabitat, FisherHabitat, GoshawkHabitat, HareHabitat,
+                          SquirrelHabitat,SmMammalHabitat, GrouseHabitat)]
+write.csv(hab_ind_d, "./02-prepped_values/hab_indi.csv", row.names = F)
+
+
+custom_color_scale <- c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#a6cee3", "#b15928")
+
+
+ggplot(data= hab_ind)+
+  geom_point(aes(x = TimeSinceFire, y = hab_ind_sc, colour = species))+
+  geom_smooth(aes(x = TimeSinceFire, y = hab_ind_sc, colour = species), alpha = 0,
+              method = "gam")+
+  labs(color = "Wildlife species")+
+  scale_color_manual(labels = c("Marten", "Fisher", "Goshawk", "Hare", "Squirrel",
+                                "Small mammal", "Grouse"), 
+                     values = custom_color_scale)+
+  xlab("Time since fire")+
+  ylab("Habitat index")+
+  facet_wrap(~Planted)
+  
+ 
+ggplot(data= hab_ind)+
+  geom_boxplot(aes(x = Planted, y = hab_ind_sc, fill = species))
 
 
 ```
