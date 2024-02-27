@@ -2,8 +2,8 @@
 library(data.table)
 library(ggplot2)
 
-in_dir <- "02-prepped_values"
-
+in_dir <- "02_prepped_values"
+out_dir <- "03_outputs"
 #Schwenk et al 2012
 #1. overall goal: manage forests for multiple values
 #2. set objectives: objectives: 1. store carbon, 2. produce timber/wood products, 3. sustain biodiversity
@@ -38,7 +38,7 @@ in_dir <- "02-prepped_values"
 
 hb <- fread(list.files(in_dir, "hab", full.names = TRUE))
 cr <- fread(list.files(in_dir, "carbon", full.names = TRUE))
-fl <- fread(list.files(in_dir, "fuels", full.names = TRUE))
+fl <- fread(list.files(in_dir, "ccp", full.names = TRUE))
 tb <- fread(list.files(in_dir, "vol", full.names = TRUE))
 
 hb_cr <- merge(hb, cr, by ="PlotID")
@@ -62,39 +62,242 @@ ind_names <- colnames(hb_cr_fl_tb)[!colnames(hb_cr_fl_tb) %in% c("PlotID",
                                                                  "TimeSinceFire",
                                                                  "under_plant")]
 
+var_incl <- c("MartenHabitat","GoshawkHabitat", "HareHabitat", "SquirrelHabitat",
+              "GrouseHabitat", "TotalCarbon", "DeadCarbon", "LiveCarbon",
+              "MerchVol", "mn_90_ccp")
+scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
+
+hb_cr_fl_tb[, (var_incl) := lapply(.SD, scale_fn), .SDcols = var_incl]
+
+
+
 ind_table <- melt(hb_cr_fl_tb, id.vars = c("PlotID","Planted","TimeSinceFire","under_plant"),
                   measure.vars = ind_names)
 
-contrasting_colors <- c("#E41A1C", "#377EB8", "#4DAF4A", "#FF7F00", "#FF33CC", "#A65628", 
-                        "#984EA3", "#FFD92F", "#66C2A5", "#FC8D62", "#8E7BAA", "#F8766D")
+ggplot(ind_table)+
+  geom_point(aes(x = TimeSinceFire, y = value, colour = variable))+
+  geom_smooth(aes(x = TimeSinceFire, y = value, colour = variable), alpha = 0.2, method = "gam")+
+  xlab("Time since fire")+
+  ylab("Ecosystem Service Value")+
+  facet_wrap(~Planted)
+
+#which fuels:
+cnames <- c("mn_50_hfi","mn_75_hfi","mn_90_hfi","mn_95_hfi", 
+            "mn_50_ccp","mn_75_ccp","mn_90_ccp","mn_95_ccp")
+fire_ind <- ind_table[variable %in% cnames]
+
+#head fire intensity
+ggplot(fire_ind[variable %in% c("mn_50_hfi","mn_75_hfi","mn_90_hfi","mn_95_hfi")])+
+  geom_point(aes(x = TimeSinceFire, y = value, colour = variable))+
+  geom_smooth(aes(x = TimeSinceFire, y = value, colour = variable), alpha = 0, method = "loess")+
+  xlab("Time since fire")+
+  ylab("Head fire intensity")+
+  facet_wrap(~Planted)
+ggsave(filename = "head_fire_int.jpg",path = out_dir, device='jpeg', dpi=300, bg="white")
+
+#head fire intensity
+ggplot(fire_ind[variable %in% c("mn_50_ccp","mn_75_ccp","mn_90_ccp","mn_95_ccp")])+
+  geom_point(aes(x = TimeSinceFire, y = value, colour = variable))+
+  geom_smooth(aes(x = TimeSinceFire, y = value, colour = variable),linewidth = 1.5,
+              alpha = 0, method = "lm")+
+  xlab("Time since fire")+
+  ylab("probability of crown fire")+
+  facet_wrap(~Planted)+
+  theme_minimal()+
+  theme(legend.position = "bottom")+
+  theme(strip.text.x = element_text(face="bold"),text=element_text(size=18))
+  
+ggsave(filename = "prob_crown.jpg",path = out_dir, device='jpeg', dpi=300, bg="white")
+
+
+
+
+### graphs of indices of interest:
+graph_ind <- ind_table[variable %in% var_incl]
+
 
 contrasting_colors <- c("#00AFBB", "#E7B800","#0072B2", "#FC4E07","#4DAF4A","#A65628",
                         "#CC79A7","#FF33CC","#8E7BAA","#999999","#E41A1C","#000000")
 
 
-ggplot(ind_table)+
+
+
+
+#break it down:
+wildlife_ind <- c("MartenHabitat","GoshawkHabitat", "HareHabitat", "SquirrelHabitat",
+                 "GrouseHabitat")
+contrasting_colors <- c("#00AFBB", "#E7B800","#0072B2","#4DAF4A","#A65628")
+ggplot(graph_ind[variable %in% wildlife_ind])+
+  geom_point(aes(x = TimeSinceFire, y = value, colour = variable), alpha = 0.5)+
+  geom_smooth(aes(x = TimeSinceFire, y = value, colour = variable), 
+              alpha = 0, method = "lm")+
+  labs(color = "Values")+
+  scale_color_manual(labels = c("Marten", "Goshawk", "Hare", "Squirrel",
+                                "Grouse"), 
+                     values = contrasting_colors)+
+  xlab("Time since fire")+
+  ylab("Ecosystem Service Value")+
+  facet_wrap(~Planted)+
+  theme_minimal()+
+  theme(strip.text.x = element_text(face="bold"),text=element_text(size=18))
+ggsave(filename = "wildlife_values.jpg",path = out_dir, device='jpeg', dpi=300, bg="white")
+
+carb_ind <- c("TotalCarbon", "DeadCarbon", "LiveCarbon")
+contrasting_colors <- c("#FF33CC","#8E7BAA","#999999")
+ggplot(graph_ind[variable %in% carb_ind])+
+  geom_point(aes(x = TimeSinceFire, y = value, colour = variable), alpha = 0.5)+
+  geom_smooth(aes(x = TimeSinceFire, y = value, colour = variable), 
+              alpha = 0, method = "lm")+
+  labs(color = "Values")+
+  scale_color_manual(labels = c("Total carbon", "Dead carbon", "Live carbon"), 
+                     values = contrasting_colors)+
+  xlab("Time since fire")+
+  ylab("Ecosystem Service Value")+
+  facet_wrap(~Planted)+
+  theme_minimal()+
+  theme(strip.text.x = element_text(face="bold"),text=element_text(size=18))
+ggsave(filename = "carb_values.jpg",path = out_dir, device='jpeg', dpi=300, bg="white")
+
+
+merch_fuel_ind <- c("MerchVol", "mn_90_ccp")
+contrasting_colors <- c("#E41A1C","#000000")
+ggplot(graph_ind[variable %in% merch_fuel_ind])+
+  geom_point(aes(x = TimeSinceFire, y = value, colour = variable), alpha = 0.5)+
+  geom_smooth(aes(x = TimeSinceFire, y = value, colour = variable), 
+              alpha = 0, method = "lm")+
+  labs(color = "Values")+
+  scale_color_manual(labels = c("mean prob crown fire 90th","merch vol"), 
+                     values = contrasting_colors)+
+  xlab("Time since fire")+
+  ylab("Ecosystem Service Value")+
+  facet_wrap(~Planted)+
+  theme_minimal()+
+  theme(strip.text.x = element_text(face="bold"),text=element_text(size=18))
+ggsave(filename = "fuel_vol_values.jpg",path = out_dir, device='jpeg', dpi=300, bg="white")
+
+#all together
+contrasting_colors <- c("#00AFBB", "#E7B800","#0072B2","#4DAF4A","#A65628",
+                        "#FF33CC","#8E7BAA","#999999","#E41A1C","#000000")
+ggplot(graph_ind)+
+  geom_point(aes(x = TimeSinceFire, y = value, colour = variable), alpha = 0.2)+
+  geom_smooth(aes(x = TimeSinceFire, y = value, colour = variable), 
+              alpha = 0, method = "lm")+
+  labs(color = "Values")+
+  scale_color_manual(labels = c("Marten", "Goshawk", "Hare", "Squirrel",
+                                "Grouse","Total carbon", "Dead carbon",
+                                "Live carbon","mean prob crown fire 90th","merch vol"), 
+                     values = contrasting_colors)+
+  xlab("Time since fire")+
+  ylab("Ecosystem Service Value")+
+  facet_wrap(~Planted)+
+  theme_minimal()+
+  theme(strip.text.x = element_text(face="bold"),text=element_text(size=18))
+ggsave(filename = "merge_values.jpg",path = out_dir, device='jpeg', dpi=300, bg="white")
+
+
+
+
+
+ind_sel <- ind_table[variable == "GoshawkHabitat"|
+                       variable == "FisherHabitat"|
+                       variable == "HareHabitat"|
+                       variable == "GrouseHabitat"|
+                       variable == "TotalCarbon"|
+                       variable == "DeadCarbon"|
+                       variable == "MerchVol"|
+                       variable == "mn_ccp"]
+
+ggplot(ind_sel)+
   geom_point(aes(x = TimeSinceFire, y = value, colour = variable))+
   geom_smooth(aes(x = TimeSinceFire, y = value, colour = variable), alpha = 0.2, method = "gam")+
-  labs(color = "Wildlife species")+
-  scale_color_manual(labels = c("Marten", "Fisher", "Goshawk", "Hare", "Squirrel",
-                                "Small mammal", "Grouse","Total carbon", "Dead carbon",
-                                "Live carbon","prob of crown", "merch vol"), 
-                     values = contrasting_colors)+
   xlab("Time since fire")+
   ylab("Ecosystem Service Value")+
   facet_wrap(~Planted)
 
-ggplot(ind_table[Planted == "P" & TimeSinceFire < 20])+
-  geom_point(aes(x = TimeSinceFire, y = value, colour = variable))+
-  geom_smooth(aes(x = TimeSinceFire, y = value, colour = variable), alpha = 0, method = "lm")+
-  labs(color = "Wildlife species")+
-  scale_color_manual(labels = c("Marten", "Fisher", "Goshawk", "Hare", "Squirrel",
-                                "Small mammal", "Grouse","Total carbon", "Dead carbon",
-                                "Live carbon","prob of crown", "merch vol"), 
-                     values = contrasting_colors)+
-  xlab("Time since fire")+
-  ylab("Ecosystem Service Value")+
-  facet_wrap(~under_plant)
+
+
+library(mgcv)
+library(dplyr)
+library(betareg)
+# Define the list of variable names
+variable_names <- c("GoshawkHabitat", "FisherHabitat","HareHabitat",
+                    "TotalCarbon", "mn_90_ccp", "MerchVol")
+
+# Function to fit GAM and extract summary information
+#using betar - for data that ranges from 0 to 1
+fit_and_extract <- function(variable_name, data) {
+  form <- paste(variable_name, "~ Planted + s(TimeSinceFire)")
+  gm <- gam(formula = as.formula(form),
+            data = data,
+            family = betar(link = "logit"),
+            method = "REML")
+  
+ 
+   summary_dt <- data.table(
+    Variable = variable_name,
+    Treatment = round(summary(gm)$p.table["PlantedP",1],3),
+    Treatment_p_val = round(summary(gm)$p.table["PlantedP",4],3),
+    TimeSinceFire = round(summary(gm)$s.table[,1],3),
+    TimeSinceFire_p_val = round(summary(gm)$s.table[,4],3),
+    R_Squared = round(summary(gm)$r.sq,2)
+  )
+  #suppressWarnings()
+  return(summary_dt)
+}
+
+# Apply the function to each variable name
+results <- lapply(variable_names, fit_and_extract, data = hb_cr_fl_tb)
+
+# Combine results into a single data frame
+gam_results <- bind_rows(results)
+
+
+variable_names <- c("GoshawkHabitat", "FisherHabitat","HareHabitat",
+                    "TotalCarbon", "mn_90_ccp", "MerchVol")
+
+# Add a small decimal to values of exactly 0 and subtract from values of exactly 1
+hb_cr_fl_tb[, paste0((variable_names),"_s") :=
+                  lapply(.SD, function(x) {
+                    ifelse(x == 0, x + 0.00001,  
+                           ifelse(x == 1, x - 0.00001, x))  
+                  }), .SDcols = variable_names]
+
+hb_cr_fl_tb[, paste0((variable_names),"_s") := lapply(.SD, scale_fn), 
+            .SDcols = variable_names]
+
+
+variable_names <- c("GoshawkHabitat_s", "FisherHabitat_s","HareHabitat_s",
+                    "TotalCarbon_s", "mn_90_ccp_s", "MerchVol_s")
+
+#using betar - for data that ranges from 0 to 1
+fit_and_extract <- function(variable_name, data) {
+  form <- paste(variable_name, "~ Planted + TimeSinceFire")
+  gl <- betareg::betareg(formula = as.formula(form),
+                        data = data)
+  
+  
+  # Create a data.table with extracted information
+  summary_dt <- data.table(
+    Variable = variable_name,
+    Treatment = round(summary(gl)$coefficients$mean["PlantedP",1],3),
+    Treatment_p_val = round(summary(gl)$coefficients$mean["PlantedP",4],3),
+    TimeSinceFire = round(summary(gl)$coefficients$mean["TimeSinceFire",1],3),
+    TimeSinceFire_p_val = round(summary(gl)$coefficients$mean["TimeSinceFire",1],3),
+    R_Squared = summary(gl)$r.sq
+  )
+  #suppressWarnings()
+  return(summary_dt)
+}
+
+# Apply the function to each variable name
+results <- lapply(variable_names, fit_and_extract, data = hb_cr_fl_tb)
+
+# Combine results into a single data frame
+linear_results <- bind_rows(results)
+
+
+
+
 
 set.seed(123)  # For reproducibility
 nmds_result <- vegan::metaMDS(hb_cr_fl_tb[,..ind_names],
@@ -118,39 +321,10 @@ ggplot() +
                                    label = Species, hjust = 1.2), size = 3)
 
 
-library(mgcv)
-
-
-form <- m_ccp ~ Planted + s(TimeSinceFire)
-
-set.seed(32639)
-gm <- mgcv::gam(formula = as.formula(form),
-                data = hb_cr_fl_tb,
-                family = betar(link = "logit"),
-                method = "REML")
-
-# check the appropriateness of Ks
-gam.check(gm)
-plot(gm, pages = 1, rug = TRUE, shade = TRUE)
-summary(gm)
-
-
-form <- m_ccp ~ Planted + TimeSinceFire
-gl <- glm(formula = as.formula(form),
-                       data = hb_cr_fl_tb)
-summary(gl)
-
-
-
-
-
-library(betareg)
 form <- GrouseHabitat ~ Planted + TimeSinceFire
 gl <- betareg::betareg(formula = as.formula(form),
                 data = hb_cr_fl_tb)
 
-model <- betareg::betareg(GoshawkHabitat ~ TimeSinceFire, data = hb_cr_fl_tb)
-saveRDS(gm, file = file.path(out_dir, "gam_out.rds"))
 
 
 

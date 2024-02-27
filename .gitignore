@@ -58,3 +58,9 @@ Inputs/
 *.jpeg
 
 ccpDF-CCP_AllWx_Results_CFIS_O1btoS1_RegenToSFC.csv
+
+04_sortie_runs/01_parameter_files/
+
+03_outputs/
+
+02_prepped_values/

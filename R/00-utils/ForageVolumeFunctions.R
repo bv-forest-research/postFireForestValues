@@ -1,35 +1,35 @@
 # Forage Volume Functions
 
-shrubs <- fread("./01-data_inputs/FR_shrubVolumes.csv")
+#shrubs <- fread("./01-data_inputs/FR_shrubVolumes.csv")
 
 
 # Shrub species percent cover
 ShrubSpCov <- function(shrubDat){
   #-- Prep/clean the data
   # fix Species names to be 7 letter code and capitalize
-  shrubs$Species <- toupper(shrubs$Species)
+  shrubDat$Species <- toupper(shrubDat$Species)
   # remove underscore
-  shrubs$Species <- sub("_", "", shrubs$Species)
+  shrubDat$Species <- sub("_", "", shrubDat$Species)
   #remove Pyro sp., ASTECON (not a shrub, not consistently sampled)
-  shrubs <- shrubs[!(Species %in% c("PYROSP", "ASTECON"))]
+  shrubDat <- shrubDat[!(Species %in% c("PYROSP", "ASTECON"))]
   
   #-- Calculate percent cover
   # A1 plot = 5.64m radius = 100m2, c1/C2/C3/C4 = 3.99m radius = 50m2
   # Account for the sub-sampling of some plots
-  shrubs[, AreaSearchM2 := ifelse(SubPlot == "A1", 100, 50)]
+  shrubDat[, AreaSearchM2 := ifelse(SubPlot == "A1", 100, 50)]
   # convert from cm2 to m2, / by subplot area, X100 = percent cover
-  shrubs[, PerCov := (((Diam1*Diam2)*0.0001)/AreaSearchM2)*100]
+  shrubDat[, PerCov := (((Diam1*Diam2)*0.0001)/AreaSearchM2)*100]
   #shrubs[, .(PerCov = sum(PerCov)), by = c("PlotID", "Species")]
   
   # Account for sub-sampling of species
   # Some sub-samples didn't need to be sub-sampled i.e. have 10/10 sampled
-  shrubs[Total_Number == 10, Total_Number := NA]
-  shrubs[, PerCov := ifelse(!is.na(Total_Number), mean(PerCov)*Total_Number, PerCov), by = .(PlotID, SubPlot, Species)]
+  shrubDat[Total_Number == 10, Total_Number := NA]
+  shrubDat[, PerCov := ifelse(!is.na(Total_Number), mean(PerCov)*Total_Number, PerCov), by = .(PlotID, SubPlot, Species)]
   # Now that the species sub-plots have been calculated only keep one of the rows to represent the perCov
-  shrubs <- shrubs[!is.na(Total_Number), unique(shrubs, by = c("PlotID", "SubPlot", "Species", "Total_Number"))]
+  shrubDat <- shrubDat[!is.na(Total_Number), unique(shrubDat, by = c("PlotID", "SubPlot", "Species", "Total_Number"))]
   
   # Combine salix species and calculate total percent cover per plot per species
-  PlotShrubCov <- shrubs[grepl("SALI", Species), Species := "SALISPP"][, .(PerCov = sum(PerCov)), by = .(PlotID, Species)]
+  PlotShrubCov <- shrubDat[grepl("SALI", Species), Species := "SALISPP"][, .(PerCov = sum(PerCov)), by = .(PlotID, Species)]
   
   return(PlotShrubCov)
 }
@@ -178,6 +178,6 @@ GBForageVol <- function(ShrubVolDat) {
 # }
 
 
-shrubs <- fread("./01-data_inputs/FR_shrubVolumes.csv")
+#shrubs <- fread("./01-data_inputs/FR_shrubVolumes.csv")
 
 
