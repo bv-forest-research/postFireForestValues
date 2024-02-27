@@ -1,6 +1,6 @@
 # Coarse woody debris volume/ha (line intersect method) by decay class and species
 cwdVol <- function(cwdDat, lineDat){
-  setnames(lineDat, "Horizontal distance: adj. line length","HorizontalDist")
+  setnames(lineDat, "Horizontal distance: adj. line length","HorizontalDist", skip_absent = TRUE)
   PlotLine <- lineDat[,.(HorizontalDist = sum(HorizontalDist)),
                       by="PlotID"]
   # Calculate volume using VanWagner volume equation
