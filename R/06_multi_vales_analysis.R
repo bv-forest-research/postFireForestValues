@@ -225,8 +225,8 @@ variable_names <- c("GoshawkHabitat", "FisherHabitat","HareHabitat",
 
 # Function to fit GAM and extract summary information
 #using betar - for data that ranges from 0 to 1
-fit_and_extract <- function(variable_name, data) {
-  form <- paste(variable_name, "~ Planted + s(TimeSinceFire)")
+gam_fit_and_extract <- function(variable_name, data) {
+  form <- paste(variable_name, "~ Planted + s(TimeSinceFire, bs = 'cr')")
   gm <- gam(formula = as.formula(form),
             data = data,
             family = betar(link = "logit"),
