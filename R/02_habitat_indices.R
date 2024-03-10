@@ -12,7 +12,7 @@ library(tidyverse)
 #library(ggpubr)
 
 
-in_dir <- "01-data_inputs"
+in_dir <- "01_data_inputs"
 out_dir <- "02_prepped_values"
 
 files_to_source <- list.files("./R/00-utils/", pattern = "Function", 
@@ -444,6 +444,177 @@ PlotBirds[, edge := ifelse(conSPH <1 | conSPH >800 & decSPH <1 | decSPH >800, 0.
                           ifelse(conSPH >=1 & conSPH <=800 & decSPH >=1 & decSPH <=800,
                                  0.1+fDecSnags + fSPHc + fSPHd, 0))))]
 # ** there are negatives ** is this correct?
+# 1) Snag-associates
+# snags >30cm dbh = snag SPH/1.02+SPH
+PlotBirds <- merge(plot_treatments, PlotSnags[DBH_bin >=30, .(snagSPH = sum(snagSPH)),
+                                              by = PlotID], all.x = TRUE)
+PlotBirds[is.na(snagSPH), snagSPH := 0]
+PlotBirds[, snag := snagSPH/(1.02 + snagSPH)]
+
+# 2) Shrub-associates:
+# shrub cover <56% 0.01*cover+0.44, if >56 = 1
+# which shrub layer? B1 or B2?
+# Both B1 and B2 layers but only non-ericaceous deciduous shrubs
+unique(PlotShrubCov$Species)
+Decid_Species<- c("AMELALN",  "ROSAACI",  "LONIINV", "RUBUPAR", "SYMPALB" ,  "SPIRPYR",  "SHEPCAN",
+                  "AT" , "SALISPP" , "VIBUEDU", "RIBELAC","ALNUSIN",
+                  "SPIRBET", "RUBUIDA", "AC", "RIBEHUD", "SORBSIT","RIBESP",
+                  "SAMBRAC",  "SORBSCO", "OPLOHOR",  "RIBELAX",  "ALNUTEN", 
+                  "CORNSTO", "RIBETRI",  "PRUNPEN",   "RIBE HUD",  "RIBE GLA",
+                  "BETUGLA_VAR_GLA", "SYMP ALB", "EP", "ACER GLA")    
+
+
+
+#there are covers of over 100% which should be checked, 
+#seems likely that there was a data entry or calculation error
+lots_alder<-subset(ShrubVolume , ShrubVolume$PlotID == "FR42")
+lots_alder2<-subset(ShrubVolume , ShrubVolume$PlotID == "FR21")
+lots_alder3<-subset(ShrubVolume , ShrubVolume$PlotID == "FR47")
+lots_alder4<-subset(ShrubVolume , ShrubVolume$PlotID == "FR73")
+lots_alder4<-subset(ShrubVolume , ShrubVolume$PlotID == "FR68")
+lots_shepherdia<-subset(ShrubVolume , ShrubVolume$PlotID == "FR36")
+lots_rubus<-subset(ShrubVolume , ShrubVolume$PlotID == "FR30")
+
+SubPlot_Cover<-PlotShrubCov[Species %in% Decid_Species, .(PerCov = sum(PerCov)),
+                            by = PlotID]
+
+
+
+columnstoadd <- c("PlotID", "PerCov")
+
+PlotBirds[SubPlot_Cover, (columnstoadd) := mget(columnstoadd), on = "PlotID"]
+
+PlotBirds[is.na(PerCov), PerCov := 0]
+
+
+
+PlotBirds[, shrub := ifelse(PerCov < 56, 0.01*PerCov+0.44, 1)]
+
+
+
+#check relationship of deciduous shrubs to shrub associated birds
+
+plot(PlotBirds$PerCov, PlotBirds$shrub)
+
+
+
+# 3) Conifer forest species: *check equation
+
+# all conifers for 1st part of equation; mature conifers >30cm DBH for 2nd part of equation = (0.5/(1 + 2000 * e^-0.017* SPH)) + ((0.5*SPH30)/(50 + SPH30))
+
+PlotBirds <- merge(PlotBirds, PlotTree[DBH_bin >= 10 & Species %in% c("Pl", "Sx", "Bl", "Fd"),
+                                       
+                                       .(conSPH = sum(SPH)), by = PlotID], all.x = TRUE)
+
+PlotBirds[is.na(conSPH), conSPH := 0]
+
+PlotBirds <- merge(PlotBirds, PlotTree[DBH_bin >= 30 & Species %in% c("Pl", "Sx", "Bl", "Fd"),
+                                       
+                                       .(lgconSPH=sum(SPH)), by=PlotID], all.x = TRUE)
+
+PlotBirds[is.na(lgconSPH), lgconSPH := 0]
+
+PlotBirds[, conifer := (0.5/(1 + (2000 * (exp(-0.017* conSPH))))) +
+            
+            ((0.5*lgconSPH)/(50 + lgconSPH))]
+
+#** double check this equation, make sure the exponent is done correctly
+
+#*AC: I checked - looks good to me
+
+#check relationship of conifer and large conifer stems to conifer associated birds
+
+plot(PlotBirds$conSPH, PlotBirds$conifer)
+
+plot(PlotBirds$lgconSPH, PlotBirds$conifer)
+
+
+
+# 4) Open-forest species:
+
+# conifers <5 = 0, conifers > 5, 0.5*e^-0.5*(-(ln(conifersSPH?-2.4))^2 + 0.5*e^-0.5*(-(ln(conifersSPH?-3.5))^2))
+
+PlotBirds[, open := ifelse(conSPH >= 5, ((0.5*exp(-0.5*(-(log(conSPH)-2.4))^2)) +
+                                           
+                                           (0.5*exp(-0.5*(-(log(conSPH)-3.5))^2))), 0.5)]
+
+
+
+
+
+#check relationship of conifer stems to open habitat birds
+
+plot(PlotBirds$conSPH, PlotBirds$open)
+
+
+
+# 5) Forest-edge species:
+
+# conifer sph between 1-800, -0.24* ln(SPH) + 0.137 * ln(SPH)^2 -0.052 * ln(SPH)^3
+
+PlotBirds[, fSPHc := ifelse(conSPH >= 1 & conSPH <= 800,
+                            
+                            (-0.24*log(conSPH) + 0.137*log(conSPH)^2 - 0.0152*log(conSPH)^3), 0),
+          
+          by = PlotID]
+
+# deciduous sph between 1-800, -0.24 * ln(SPH) +0.137* ln(SPH)^2 - 0.052*ln(SPH)^3
+
+PlotBirds <- merge(PlotBirds, PlotTree[DBH_bin >= 10 &Species %in% c("At", "Ac", "Ep"),
+                                       
+                                       .(decSPH = sum(SPH)), by = PlotID],
+                   
+                   all.x = TRUE)
+
+PlotBirds[is.na(decSPH), decSPH := 0]
+
+PlotBirds[, fSPHd := ifelse(decSPH >=1 & decSPH <=800,
+                            
+                            (-0.24*log(decSPH) + 0.137*log(decSPH)^2 - 0.0152*log(decSPH)^3), 0),
+          
+          by = PlotID]
+
+# decidous snags >30cm dbh, 0.15 * sngasSPH? / 1.02 * snagsSPH?
+
+PlotBirds <- merge(PlotBirds, PlotSnags[DBH_bin >=30 & Species %in% c("At", "Ac", "Ep"),
+                                        
+                                        .(decSnagSPH = sum(snagSPH)), by = PlotID], all.x = TRUE)
+
+PlotBirds[is.na(decSnagSPH), decSnagSPH := 0]
+
+PlotBirds[, fDecSnags := (0.15*decSnagSPH)/(1.02*decSnagSPH), by = PlotID]
+
+PlotBirds[is.na(fDecSnags), fDecSnags := 0]
+
+# then add up
+
+PlotBirds[, edge :=   0.1+fDecSnags + fSPHc + fSPHd]
+
+
+
+# ** there are negatives ** is this correct?
+
+#negatives are fixed now. i had a typo in equation and 0.052 should have been 0.0152
+
+
+
+#check relationship of conifer stems to mixed habitat birds
+
+plot(PlotBirds$conSPH, PlotBirds$edge)
+
+#check relationship of decid stems to mixed habitat birds
+
+plot(PlotBirds$decSPH, PlotBirds$edge)
+
+#check relationship of decid snags to mixed habitat birds
+
+plot(PlotBirds$decSnagSPH, PlotBirds$edge)
+
+
+
+
+
+
 
 #-- ALL SPECIES 
 HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
