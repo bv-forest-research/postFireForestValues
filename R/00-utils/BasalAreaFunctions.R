@@ -63,11 +63,17 @@ BAPHsizeCl <- function(treeDat_a1,treeDat_b1){
   FR_LiveTrees[, BA := pi * (DBH ^ 2 / 40000)]
   FR_LiveTrees[, BAPH := BA * PHF]
   
+  #diamClasses <- c(0, 7.5, 12.5, 17.5, 22.5)
+  #for (j in 1:length(diamClasses)) {
+  #  FR_LiveTrees[DBH >= diamClasses[j], DBH_bin := diamClasses[j]]
+  #}
+  diamBreaks <- c(0, 7.5, 12.5, 17.5, 22.5, Inf)
+  diamLabels <- c(7.5, 12.5, 17.5, 22.5, 22.5)
+  FR_LiveTrees[, DBH_bin := as.numeric(as.character(cut(DBH,
+                                           breaks = diamBreaks,
+                                           labels = diamLabels,
+                                           right = TRUE)))]
   
-  diamClasses <- c(0, 7.5, 12.5, 17.5, 22.5)
-  for (j in 1:length(diamClasses)) {
-    FR_LiveTrees[DBH >= diamClasses[j], DBH_bin := diamClasses[j]]
-  }
   FR_LiveTrees[, PlotID := as.factor(PlotID)][, Species := as.factor(Species)]
   PlotTrees <- FR_LiveTrees[, .(BAPH = sum(BAPH)), 
                             by = c("PlotID", "Species", "DBH_bin")] #only 1 plot, sum up stems in each diam class
