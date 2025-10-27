@@ -4,6 +4,9 @@
 # Ingrid Farnell
 # June 8, 2023
 
+library(data.table)
+
+
 # Import data
 #Plot
 FR_treatments <- fread("./Inputs/FR_Treatments.csv") # has field plot assessed treatments and fire year
@@ -24,8 +27,8 @@ line <- fread("./Inputs/FR_LineTransect.csv")
 
 # Variables
 # Basal area per hectare (BAPH)
-source("./R/BasalAreaFunctions.R")
-BAtrees <- BAPH(A1trees, B1trees)
+source("./R/00-utils/BasalAreaFunctions.R")
+BAtrees <- BAPHlive(A1trees, B1trees)
 PlotBAtrees <- BAtrees[,.(BAPH=sum(BAPH)), by="PlotID"]
 PlotBAtrees <- merge(PlotBAtrees, FR_treatments)
 
@@ -34,7 +37,7 @@ BAdiamClass <- BAPHsizeCl(A1trees, B1trees)
 BAdiamClass <- merge(BAdiamClass, FR_treatments)
 
 # Live trees stems per hectare (density)
-source("./R/DensityFunctions.R")
+source("./R/00-utils/DensityFunctions.R")
 PlotTree <- TreeDensity(A1trees, B1trees) # ask Alana why 2cm size bins
 # AC - changed it to 5cm (2 is for SORTIE)
 PlotTree <- merge(PlotTree, FR_treatments)
@@ -44,7 +47,7 @@ PlotSnags <- SnagDensity(A1trees, B1trees)
 PlotSnags <- merge(PlotSnags, FR_treatments)
 
 # CWD HQI
-source("./R/cwdHabitatQualityIndexFunction.R")
+source("./R/00-utils/cwdQualityIndexFunction.R")
 PlotHQI <- cwdHQI(cwd)
 PlotCWD <- cwdVar(cwd)
 PlotCWD <- merge(PlotCWD, PlotHQI)

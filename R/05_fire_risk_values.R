@@ -5,7 +5,7 @@ library(data.table)
 library(ggplot2)
 library(lubridate)
 
-in_dir <- "01_data_inputs"
+in_dir <- "Inputs"
 out_dir <- "02_prepped_values"
 
 # Treatments -------------------------------------------------------------------------
@@ -20,7 +20,8 @@ plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire,FIRE_NAME)]
 
 # Fuels 
 #fuels_dt <- fread(file.path(in_dir,"ccpDF-CCP_AllWx_Results_CFIS_O1btoS1_RegenToSFC.csv"))
-fuels_dt <- fread(file.path(in_dir,"ccpDF_modified-CCP_AllWx_Results_SFI-Consume_02202024.csv"))
+fuels_dt <- fread(file.path("C:/Sync/BVRC/FSD program/FCI/Wildfire recruitment/Field work/Data",
+                            "ccpDF_modified-CCP_AllWx_Results_SFI-Consume_02202024.csv"))
 fuels_dt <- merge(fuels_dt, plot_treatments, 
                   by.x = "Plot", by.y = "PlotID", all.x = TRUE, allow.cartesian = TRUE)
 fuels_dt[, ymd_wx := ymd(wxDate)]
