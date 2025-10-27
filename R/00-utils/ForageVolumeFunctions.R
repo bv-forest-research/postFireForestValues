@@ -2,6 +2,11 @@
 
 #shrubs <- fread("./01-data_inputs/FR_shrubVolumes.csv")
 
+#' this can have overlapping cover - could be > 100% shrub cover (not just preferred for moose)
+#' 
+#' ShrubB1 (data) - will never be over 100 - it is all species (not just preferred for moose)
+#' combined - no species difference between the two. 
+
 
 # Shrub species percent cover
 ShrubSpCov <- function(shrubDat){

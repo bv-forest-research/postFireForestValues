@@ -252,6 +252,10 @@ lm_res <- lapply(var_incl, lm_fit_and_extract, data = fire_vals)
 lm_results <- dplyr::bind_rows(lm_res)
 gam_res <- lapply(var_incl, gam_fit_and_extract, data = fire_vals)
 gam_results <- dplyr::bind_rows(gam_res)
+#I just wonder if this is important - just the impact of treatment (forget time)
+t.test(fire_vals[Planted == "P"]$mn_90_CO2, fire_vals[Planted == "NP"]$mn_90_CO2)
+ggplot(fire_vals)+
+  geom_boxplot(aes(x = Planted, y= mn_50_CO2))
 
 var_incl <- c("mn_50_sfi","mn_75_sfi", "mn_90_sfi", "mn_95_sfi")
 lm_res <- lapply(var_incl, lm_fit_and_extract, data = fire_vals)

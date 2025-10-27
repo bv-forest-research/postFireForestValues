@@ -45,7 +45,7 @@ hb_cr <- merge(hb, cr, by ="PlotID")
 hb_cr_fl <- merge(hb_cr, fl, by ="PlotID")
 hb_cr_fl_tb <- merge(hb_cr_fl, tb, by ="PlotID")
 
-FR_treatments <- fread(file.path("01-data_inputs","FR_Treatments.csv"))
+FR_treatments <- fread(file.path("01_data_inputs","FR_Treatments.csv"))
 FR_treatments[ID == "FR41"|ID == "FR48"|ID == "FR50"|ID == "FR50"|ID == "FR60", 
               under_plant := "Y"][is.na(under_plant), under_plant := "N"]
 
