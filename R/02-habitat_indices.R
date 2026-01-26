@@ -46,7 +46,7 @@ scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 #-- Plot attributes
 # CWD quality
 PlotCQI <- cwdQI(cwd)
-PlotCQI[, CQI:=round(CQI*0.01, digit=2)] #values between 0-100; 0=bad 100=best
+PlotCQI[, CQI:=round(CQI*0.01, digit=2)] #values between 0-1; 0=bad 1=best
 
 # CWD piles
 PlotPiles <- cwdPiles(cwd)
