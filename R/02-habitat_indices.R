@@ -13,7 +13,7 @@ library(tidyverse)
 
 
 in_dir <- "01-data_inputs"
-out_dir <- "02_prepped_values"
+out_dir <- "02-prepped_values"
 
 files_to_source <- list.files("./R/00-utils/", pattern = "Function", 
                               full.names = TRUE)
@@ -38,6 +38,10 @@ densiometer <- fread(file.path(in_dir,"FRdensiometer.csv"))
 Cover <- fread(file.path(in_dir,"FRstrataCover.csv")) #B1= <2m and B2=2-10m shrub heights)
 setnames(Cover, c("Total_B1", "Total_B2"), c("ShrubsB1", "ShrubsB2"))
 ShrubVolume <- fread(file.path(in_dir,"FR_shrubVolumes.csv"))
+
+# Treatment
+FR_treatments <- fread(file.path(in_dir, "FR_Treatments.csv"))
+setnames(FR_treatments, "ID", "PlotID")
 
 # scale function
 scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
@@ -82,6 +86,9 @@ PlotShrubCov <- ShrubSpCov(ShrubVolume)
 PlotHuckberry <- Huckberry(PlotShrubCov, PlotCrown)
 PlotThermalForage <- ThermalForage(PlotShrubCov, PlotCrown)
 
+# Treatment
+# add time since fire
+FR_treatments[, TimeSinceFire := 2020 - FIRE_YEAR]
 
 #-- MARTEN
 # 1) quality cwd (Godbout and Ouellet, 2010; Lofroth 1993; Wiebe et al., 2014)
@@ -363,55 +370,55 @@ PlotGrizzly[is.na(PlotGrizzly)] <- 0
 # GRIZZLY BEAR HABITAT INDEX
 PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by = PlotID]
 
-
-#-- BIRDS *somethings are not right here*
-# 1) Snag-associates
-# snags >30cm dbh = snag SPH/1.02+SPH
-PlotBirds <- merge(FR_treatments, PlotSnags[DBH_bin >=30, .(snagSPH = sum(snagSPH)), by = PlotID], all.x = TRUE)
-PlotBirds[is.na(snagSPH), snagSPH := 0]
-PlotBirds[, snag := snagSPH/(1.02 + snagSPH)]
-
-# 2) Shrub-associates: 
-# shrub cover <56% 0.01*cover+0.044, if >56 = 1
-# which shrub layer? B1 or B2?
-columnstoadd <- c("PlotID", "ShrubsB1")
-PlotBirds[Cover, (columnstoadd) := mget(columnstoadd), on = "PlotID"]
-PlotBirds[is.na(ShrubsB1), ShrubsB1 := 0]
-# ***This is a placeholder - confirm which shrub layers***
-PlotBirds[, shrub := ifelse(ShrubsB1 < 56, 0.01*ShrubsB1+0.044, 1)]
-
-# 3) Conifer forest species: *check equation
-# mature conifers >30cm DBH = (0.5/(1 + 2000 * e^-0.017* SPH)) + ((0.5*SPH)/(50 + SPH))
-PlotBirds <- merge(PlotBirds, PlotTree[DBH_bin >= 30 & Species %in% c("Pl", "Sx", "Bl"), 
-                                       .(lgconSPH=sum(SPH)), by=PlotID], all.x = TRUE)
-PlotBirds[is.na(lgconSPH), lgconSPH := 0]
-PlotBirds[, conifer := (0.5/(1 + 2000 * (exp(-0.017* lgconSPH)))) + ((0.5*lgconSPH)/(50 + lgconSPH))]
-#** double check this equation, make sure the exponent is done correctly
-
-# 4) Open-forest species:
-# conifers <5 = 0, conifers > 5, 0.5*e^-0.5*(-(ln(conifersSPH?-2.4))^2 + 0.5*e^-0.5*(-(ln(conifersSPH?-3.5))^2))
-PlotBirds <- merge(PlotBirds, PlotTree[Species %in% c("Pl", "Sx", "Bl"), .(conSPH = sum(SPH)), by = PlotID], all.x = TRUE)
-PlotBirds[is.na(conSPH), conSPH := 0]
-PlotBirds[, open := ifelse(conSPH >= 5, ((0.5*exp(-0.5*(-(log(conSPH-2.4))^2))) + (0.5*exp(-0.5*(-(log(conSPH-3.5))^2)))), 0)]
-
-# 5) Forest-edge species:
-# conifer sph between 1-800, -0.24* ln(SPH) + 0.137 * ln(SPH)^2 -0.052 * ln(SPH)^3
-PlotBirds[, fSPHc := ifelse(conSPH >=1 & conSPH <=800, (-0.24*log(conSPH) + 0.137*log(conSPH)^2 - 0.052*log(conSPH)^3), 0), by = PlotID]
-# deciduous sph between 1-800, -0.24 * ln(SPH) +0.137* ln(SPH)^2 - 0.052*ln(SPH)^3
-PlotBirds <- merge(PlotBirds, PlotTree[Species %in% c("At", "Ac", "Ep"), .(decSPH = sum(SPH)), by = PlotID], all.x = TRUE)
-PlotBirds[is.na(decSPH), decSPH := 0]
-PlotBirds[, fSPHd := ifelse(decSPH >=1 & decSPH <=800, (-0.24*log(decSPH) + 0.137*log(decSPH)^2 - 0.052*log(decSPH)^3), 0), by = PlotID]
-# decidous snags >30cm dbh, 0.15 * sngasSPH? / 1.02 * snagsSPH?
-PlotBirds <- merge(PlotBirds, PlotSnags[DBH_bin >=30 & Species %in% c("At", "Ac", "Ep"), 
-                                            .(decSnagSPH = sum(snagSPH)), by = PlotID], all.x = TRUE)
-PlotBirds[, fDecSnags := (0.15*decSnagSPH)/(1.02*decSnagSPH), by = PlotID]
-PlotBirds[is.na(fDecSnags), fDecSnags := 0]
-# then add up
-PlotBirds[, edge := ifelse(conSPH <1 | conSPH >800 & decSPH <1 | decSPH >800, 0.1 + fDecSnags,
-                           ifelse(conSPH >=1 & conSPH <= 800 & decSPH <1 | decSPH >800, 0.1 + fDecSnags + fSPHc, 
-                                  ifelse(decSPH >=1 & decSPH <=800 & conSPH >=1 & conSPH <=800, 0.1 + fDecSnags + fSPHd, 
-                                         ifelse(conSPH >=1 & conSPH <=800 & decSPH >=1 & decSPH <=800, 0.1+fDecSnags + fSPHc + fSPHd, 0))))]
-# ** there are negatives ** is this correct?
+# DROPPING BIRDS
+# #-- BIRDS *somethings are not right here*
+# # 1) Snag-associates
+# # snags >30cm dbh = snag SPH/1.02+SPH
+# PlotBirds <- merge(FR_treatments, PlotSnags[DBH_bin >=30, .(snagSPH = sum(snagSPH)), by = PlotID], all.x = TRUE)
+# PlotBirds[is.na(snagSPH), snagSPH := 0]
+# PlotBirds[, snag := snagSPH/(1.02 + snagSPH)]
+# 
+# # 2) Shrub-associates: 
+# # shrub cover <56% 0.01*cover+0.044, if >56 = 1
+# # which shrub layer? B1 or B2?
+# columnstoadd <- c("PlotID", "ShrubsB1")
+# PlotBirds[Cover, (columnstoadd) := mget(columnstoadd), on = "PlotID"]
+# PlotBirds[is.na(ShrubsB1), ShrubsB1 := 0]
+# # ***This is a placeholder - confirm which shrub layers***
+# PlotBirds[, shrub := ifelse(ShrubsB1 < 56, 0.01*ShrubsB1+0.044, 1)]
+# 
+# # 3) Conifer forest species: *check equation
+# # mature conifers >30cm DBH = (0.5/(1 + 2000 * e^-0.017* SPH)) + ((0.5*SPH)/(50 + SPH))
+# PlotBirds <- merge(PlotBirds, PlotTree[DBH_bin >= 30 & Species %in% c("Pl", "Sx", "Bl"), 
+#                                        .(lgconSPH=sum(SPH)), by=PlotID], all.x = TRUE)
+# PlotBirds[is.na(lgconSPH), lgconSPH := 0]
+# PlotBirds[, conifer := (0.5/(1 + 2000 * (exp(-0.017* lgconSPH)))) + ((0.5*lgconSPH)/(50 + lgconSPH))]
+# #** double check this equation, make sure the exponent is done correctly
+# 
+# # 4) Open-forest species:
+# # conifers <5 = 0, conifers > 5, 0.5*e^-0.5*(-(ln(conifersSPH?-2.4))^2 + 0.5*e^-0.5*(-(ln(conifersSPH?-3.5))^2))
+# PlotBirds <- merge(PlotBirds, PlotTree[Species %in% c("Pl", "Sx", "Bl"), .(conSPH = sum(SPH)), by = PlotID], all.x = TRUE)
+# PlotBirds[is.na(conSPH), conSPH := 0]
+# PlotBirds[, open := ifelse(conSPH >= 5, ((0.5*exp(-0.5*(-(log(conSPH-2.4))^2))) + (0.5*exp(-0.5*(-(log(conSPH-3.5))^2)))), 0)]
+# 
+# # 5) Forest-edge species:
+# # conifer sph between 1-800, -0.24* ln(SPH) + 0.137 * ln(SPH)^2 -0.052 * ln(SPH)^3
+# PlotBirds[, fSPHc := ifelse(conSPH >=1 & conSPH <=800, (-0.24*log(conSPH) + 0.137*log(conSPH)^2 - 0.052*log(conSPH)^3), 0), by = PlotID]
+# # deciduous sph between 1-800, -0.24 * ln(SPH) +0.137* ln(SPH)^2 - 0.052*ln(SPH)^3
+# PlotBirds <- merge(PlotBirds, PlotTree[Species %in% c("At", "Ac", "Ep"), .(decSPH = sum(SPH)), by = PlotID], all.x = TRUE)
+# PlotBirds[is.na(decSPH), decSPH := 0]
+# PlotBirds[, fSPHd := ifelse(decSPH >=1 & decSPH <=800, (-0.24*log(decSPH) + 0.137*log(decSPH)^2 - 0.052*log(decSPH)^3), 0), by = PlotID]
+# # decidous snags >30cm dbh, 0.15 * sngasSPH? / 1.02 * snagsSPH?
+# PlotBirds <- merge(PlotBirds, PlotSnags[DBH_bin >=30 & Species %in% c("At", "Ac", "Ep"), 
+#                                             .(decSnagSPH = sum(snagSPH)), by = PlotID], all.x = TRUE)
+# PlotBirds[, fDecSnags := (0.15*decSnagSPH)/(1.02*decSnagSPH), by = PlotID]
+# PlotBirds[is.na(fDecSnags), fDecSnags := 0]
+# # then add up
+# PlotBirds[, edge := ifelse(conSPH <1 | conSPH >800 & decSPH <1 | decSPH >800, 0.1 + fDecSnags,
+#                            ifelse(conSPH >=1 & conSPH <= 800 & decSPH <1 | decSPH >800, 0.1 + fDecSnags + fSPHc, 
+#                                   ifelse(decSPH >=1 & decSPH <=800 & conSPH >=1 & conSPH <=800, 0.1 + fDecSnags + fSPHd, 
+#                                          ifelse(conSPH >=1 & conSPH <=800 & decSPH >=1 & decSPH <=800, 0.1+fDecSnags + fSPHc + fSPHd, 0))))]
+# # ** there are negatives ** is this correct?
 
 #-- ALL SPECIES 
 HabitatIndices <- FR_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
@@ -422,11 +429,6 @@ HabitatIndices <- HabitatIndices[PlotSquirrel, ("SquirrelHabitat") := mget("Squi
 HabitatIndices <- HabitatIndices[PlotSmMammal, ("SmMammalHabitat") := mget("SmMammalHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotGrouse, ("GrouseHabitat") := mget("GrouseHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotGrizzly, ("GrizzlyHabitat") := mget("GrizzlyHabitat"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotBirds, ("BirdsSnagHabitat") := mget("snag"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotBirds, ("BirdsShrubHabitat") := mget("shrub"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotBirds, ("BirdsConiferHabitat") := mget("conifer"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotBirds, ("BirdsOpenHabitat") := mget("open"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotBirds, ("BirdsEdgeHabitat") := mget("edge"), on = "PlotID"]
 
 # export 
 write.csv(HabitatIndices, file.path(out_dir,"hab_ind.csv"), row.names = FALSE)
