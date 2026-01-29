@@ -220,7 +220,7 @@ library(mgcv)
 library(dplyr)
 library(betareg)
 # Define the list of variable names
-variable_names <- c("GoshawkHabitat", "FisherHabitat","HareHabitat",
+variable_names <- c("GoshawkHabitat", "MartenHabitat","HareHabitat",
                     "TotalCarbon", "mn_90_ccp", "MerchVol")
 
 # Function to fit GAM and extract summary information
@@ -246,7 +246,7 @@ gam_fit_and_extract <- function(variable_name, data) {
 }
 
 # Apply the function to each variable name
-results <- lapply(variable_names, fit_and_extract, data = hb_cr_fl_tb)
+results <- lapply(variable_names, gam_fit_and_extract, data = hb_cr_fl_tb)
 
 # Combine results into a single data frame
 gam_results <- bind_rows(results)

@@ -1,47 +1,71 @@
 # Stand structure Analysis
-
 # This script summarizes the data into stand structure variables
 # Ingrid Farnell & Alana Clason
 # June 8, 2023
 # October 2025 - revisiting to have a look at the structure between treatments over time
+# January 2026, coming back to it to think about describing the stand structure instead of
+#focusing exclusively on the "treatment"
 
 library(data.table)
 library(ggplot2)
+in_dir <- "01_data_inputs"
+out_dir <- "02_prepped_values"
 
 
 # Import data
-#Plot
-FR_treatments <- fread("./Inputs/FR_Treatments.csv") # has field plot assessed treatments and fire year
-#decided to change FR08 to NP because while it was a plantation, it was burned at low severity and not planted after the fire.
-setnames(FR_treatments, "ID", "PlotID")
-FR_treatments[,TimeSinceFire := 2020 - FIRE_YEAR]
-FR_treatments <- FR_treatments[,.(PlotID,Planted,TimeSinceFire)]
+
+files_to_source <- list.files("./R/00-utils/", pattern = "Function", 
+                              full.names = TRUE)
+sapply(files_to_source, source)
+
+# Treatments ---------------------------------------------------------------
+FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
+
+#Plot treatment cleaning
+FR_treatments[,`:=`(PlotID = as.factor(ID), Planted = as.factor(Planted))]
+FR_treatments[, TimeSinceFire := 2020 - FIRE_YEAR]
+#for this paper, we don't need all the columns:
+plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire)]
 FR_treatments[,TSF := ifelse(TimeSinceFire <= 10, "<10",
-                        ifelse(TimeSinceFire <= 20, "10-20",
-                               ifelse(TimeSinceFire <= 40, "20-40",
-                                      "40-60+")))]
+                             ifelse(TimeSinceFire <= 20, "10-20",
+                                    ifelse(TimeSinceFire <= 40, "20-40",
+                                           "40-60+")))]
 FR_treatments[, Planted := factor(Planted, levels = c("P", "NP"))]
 
 
+# Plot data ----------------------------------------------------------------
 #Tree data:
-A1trees <- fread("./Inputs/A1trees.csv")
-B1trees <- fread("./Inputs/B1trees.csv")
-Regen <- fread("./Inputs/Regen.csv")
+A1trees <- fread(file.path(in_dir,"A1trees.csv"))
+B1trees <- fread(file.path(in_dir,"B1trees.csv"))
+Regen <- fread(file.path(in_dir,"Regen.csv"))
+
+#Soils data:
+Soils <- fread(file.path(in_dir,"Soils.csv"))
+
+#Woody debris:
+cwd <- fread(file.path(in_dir,"FireRehabData_CWD.csv"),stringsAsFactors = T)
+fwd <- fread(file.path(in_dir,"FireRehabData_FWD.csv"),stringsAsFactors = T)
+line <- fread(file.path(in_dir,"FireRehabData_TransectDistance.csv"),stringsAsFactors = T) 
+setnames(line, "Plot","PlotID")
+
+# Cover
+densiometer <- fread(file.path(in_dir,"FRdensiometer.csv"))
+Cover <- fread(file.path(in_dir,"FRstrataCover.csv")) #B1= <2m and B2=2-10m shrub heights)
+setnames(Cover, c("Total_B1", "Total_B2"), c("ShrubsB1", "ShrubsB2"))
+ShrubVolume <- fread(file.path(in_dir,"FR_shrubVolumes.csv"))
 
 #canopy openness:
-canopy <- fread("./Inputs/fires20_canopy-open.csv") #check with Jocelyn on NAs - 0 or NA?
+canopy <- fread(file.path(in_dir,"fires20_canopy-open.csv")) #check with Jocelyn on NAs - 0 or NA?
 canopy <- merge(FR_treatments, canopy, by.y = "site.id", by.x = "PlotID")
 canopy <- canopy[, can.close := 100-can.open]
 
-#Woody debris:
-cwd <- fread("./Inputs/FireRehabData_CWD.csv")
-fwd <- fread("./Inputs/FireRehabData_FWD.csv")
-line <- fread("./Inputs/FR_LineTransect.csv")
+
+# scale function
+scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 
 
-# Variables
+# Variables ---------------------------------------------------------------------------
 # Basal area per hectare (BAPH)
-source("./R/00-utils/BasalAreaFunctions.R")
 BAtrees <- BAPHlive(A1trees, B1trees)
 PlotBAtrees <- BAtrees[,.(BAPH=sum(BAPH)), by="PlotID"]
 PlotBAtrees <- merge(PlotBAtrees, FR_treatments, 
@@ -54,7 +78,6 @@ BAdiamClass <- BAPHsizeCl(A1trees, B1trees)
 BAdiamClass <- merge(BAdiamClass, FR_treatments)
 
 # Live trees stems per hectare (density)
-source("./R/00-utils/DensityFunctions.R")
 PlotTree <- TreeDensity(A1trees, B1trees, ClassSize = 2.5) 
 PlotTree <- merge(PlotTree, FR_treatments)
 RegenTree <- merge(Regen, FR_treatments)
@@ -64,14 +87,10 @@ PlotSnags <- SnagDensity(A1trees, B1trees)
 PlotSnags <- merge(PlotSnags, FR_treatments)
 
 # CWD HQI
-source("./R/00-utils/cwdQualityIndexFunction.R")
 PlotHQI <- cwdQI(cwd)
-#PlotCWD <- cwdVar(cwd) # not working
-#PlotCWD <- merge(PlotCWD, PlotHQI)
 PlotCWD <- PlotHQI
 
 # CWD volume
-source("./R/00-utils/cwdVolumeFunction.R")
 CWDvol <- cwdVol(cwd, line) #volume by species & decay class
 PlotCWDvol <- CWDvol[,.(VolHa=sum(VolHa)), by="PlotID"]
 PlotCWD <- merge(PlotCWD, PlotCWDvol)

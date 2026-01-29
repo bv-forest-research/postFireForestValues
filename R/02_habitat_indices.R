@@ -12,7 +12,7 @@ library(tidyverse)
 #library(ggpubr)
 
 
-in_dir <- "Inputs"
+in_dir <- "01_data_inputs"
 out_dir <- "02_prepped_values"
 
 files_to_source <- list.files("./R/00-utils/", pattern = "Function", 
@@ -83,7 +83,7 @@ PlotBAPHdead <- BAPHdead(A1trees, B1trees)
 
 # Tree density/sph
 # live
-PlotTree <- TreeDensity(A1trees, B1trees)
+PlotTree <- TreeDensity(A1trees, B1trees, ClassSize = 2)
 # dead
 PlotSnags <- SnagDensity(A1trees, B1trees)
 
@@ -640,6 +640,8 @@ write.csv(HabitatIndices, file.path(out_dir,"hab_ind.csv"), row.names = FALSE)
 #-- Preliminary Figures
 
 #alana modified -----------------------------------------------------------------------
+#HabitatIndices <- 
+
 # change the layout
 #update so all indices are 0-1
 hab_ind <- melt(HabitatIndices, id.vars = c("PlotID","Planted","TimeSinceFire"),
@@ -668,7 +670,7 @@ custom_color_scale <- c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "
 
 
 ggplot(data= hab_ind)+
-  geom_point(aes(x = TimeSinceFire, y = hab_ind_sc, colour = species))+
+  geom_point(aes(x = TimeSinceFire, y = hab_ind_sc, colour = species), alpha = 0.2)+
   geom_smooth(aes(x = TimeSinceFire, y = hab_ind_sc, colour = species), alpha = 0,
               method = "lm")+
   labs(color = "Wildlife species")+
@@ -678,7 +680,8 @@ ggplot(data= hab_ind)+
                      values = custom_color_scale)+
   xlab("Time since fire")+
   ylab("Habitat index")+
-  facet_wrap(~Planted)
+  facet_wrap(~Planted)+
+  theme_minimal()
 
 # birds only
 hab_ind_birds <- hab_ind[species %in% c("BirdsSnagHabitat", "BirdsShrubHabitat", "BirdsConiferHabitat",
@@ -694,4 +697,35 @@ ggplot(data= hab_ind_birds)+
   xlab("Time since fire")+
   ylab("Habitat index")+
   facet_wrap(~Planted)
+
+
+#non-birds:
+non_birds <- c("MartenHabitat", "FisherHabitat", "GoshawkHabitat", 
+               "HareHabitat", "SquirrelHabitat", "SmMammalHabitat",
+               "GrouseHabitat", "GrizzlyHabitat")
+hab_ind_nb <- hab_ind[species %in% non_birds]
+non_bird_labels <- c("Marten", "Fisher", "Goshawk", "Hare",
+                     "Squirrel", "SmMammal", "Grouse", "Grizzly")
+
+non_bird_colors <- custom_color_scale[1:length(non_bird_labels)]
+
+ggplot(data = hab_ind_nb) +
+  geom_point(
+    aes(x = TimeSinceFire, y = hab_ind_sc, colour = species),
+    alpha = 0.2
+  ) +
+  geom_smooth(
+    aes(x = TimeSinceFire, y = hab_ind_sc, colour = species),
+    alpha = 0, method = "lm"
+  ) +
+  labs(color = "Wildlife species") +
+  scale_color_manual(
+    labels = non_bird_labels,
+    values = non_bird_colors
+  ) +
+  xlab("Time since fire") +
+  ylab("Habitat index") +
+  facet_wrap(~Planted) +
+  theme_minimal()
+
 
