@@ -19,30 +19,28 @@
 
 # CWD Quality Index function
 cwdQI <- function(cwdDat){
-  cwd[Notes=="no CWD" | Notes=="no CWD on line", Diam_cm:=0][Notes=="no CWD" | Notes=="no CWD on line", 
-                                                             Decay_class:=0]
   # Median and max diameter
-  cwdPlot<- cwd[, .(diamMed= mean(Diam_cm), 
-                  diamMax=max(Diam_cm)),
-              by="PlotID"]
+  cwdPlot<- cwd[, .(diamMed = mean(Diam_cm, na.rm = TRUE),
+                    diamMax = max(Diam_cm, na.rm = TRUE)),
+              by = c("PlotID")]
+  cwdPlot <- cwdPlot[!is.na(diamMed)] # remove plots without cwd 
   # Number of cwd pieces/plot
   Ndc <- cwd[, .N, by=.(PlotID, Decay_class)]
+  Ndc <- Ndc[!is.na(Decay_class)] # remove plots without cwd
   Ndc[, PlotID:=as.factor(PlotID)][, Decay_class:=as.factor(Decay_class)]
-  Ndc[, PlotN:=sum(N), by="PlotID"]
+  Ndc[, PlotN:=sum(N), by= c("PlotID")]
   # Decay class evenness
   Ndc[, DCevenness:= abs(N-(PlotN/5)), by=c("PlotID", "Decay_class")]
   PlotNdc <- Ndc[,.(DCevenness=DCevenness/PlotN), by=c("PlotID", "PlotN")][,.(DCevenness=-(sum(DCevenness))), 
                                                                            by=c("PlotID", "PlotN")]
   # square root of max diameter and number pieces
   cwdPlot <- merge(cwdPlot, PlotNdc)
-  cwdPlot <- cwdPlot[,diamMax:=sqrt(diamMax)][,PlotN:=
-                                                sqrt(PlotN)][diamMax==0, PlotN:=0][diamMax==0, 
-                                                                                   DCevenness:=0]
+  cwdPlot <- cwdPlot[,diamMax:=sqrt(diamMax)][,PlotN:= sqrt(PlotN)]
   # scaling variables (mean=0, sd=1)
   cols <- colnames(cwdPlot)[-1]
-  cwdPlot[, (cols):=lapply(.SD, scale), .SDcols=cols] # right now I have plots with no CWD included before the standardization - should they be removed for this?
+  cwdPlot[, (cols):=lapply(.SD, scale), .SDcols=cols] 
   # summing variables and normalizing (0-100) for habitat quality index
-  cwdPlot[, CQI:=sum(diamMed, diamMax, PlotN, DCevenness), by="PlotID"]
+  cwdPlot[, CQI:=sum(diamMed, diamMax, PlotN, DCevenness), by= c("PlotID")]
   cwdPlot[, CQI:=((CQI-min(CQI))/(max(CQI)-min(CQI)))*100]
   PlotCQI <- cwdPlot[,.(PlotID, CQI)]
   return(PlotCQI)
