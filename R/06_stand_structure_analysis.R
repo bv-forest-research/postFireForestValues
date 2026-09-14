@@ -83,7 +83,7 @@ PlotTree <- merge(PlotTree, FR_treatments)
 RegenTree <- merge(Regen, FR_treatments)
 
 # Snags per hectare
-PlotSnags <- SnagDensity(A1trees, B1trees)
+PlotSnags <- SnagDensity(A1trees, B1trees, ClassSize = 2.5)
 PlotSnags <- merge(PlotSnags, FR_treatments)
 
 # CWD HQI
@@ -208,6 +208,21 @@ ggplot(merge(BAtrees,FR_treatments),aes(x = TimeSinceFire, y = DBH, group = Plan
   ) +
   theme_bw(base_size = 12)
 
+ggplot(merge(BAtrees,FR_treatments),aes(x = TimeSinceFire, y = Height, group = Planted))+
+  geom_point(aes(x = TimeSinceFire, y = Height, colour = Planted))+
+  geom_smooth(aes(x = TimeSinceFire, y = Height, colour = Planted),
+              method = "loess", se = FALSE)+
+  scale_colour_manual(values = c("P" = "#2C7BB6", "NP" = "#D7191C"),
+                      labels = c("Planted", "Not Planted"))+
+  labs(
+    x = "Years since fire",
+    y = "Height (m)",
+    fill = ""
+  ) +
+  theme_bw(base_size = 12)
+
+
+
 
 #how many size class 3 (<7.5cm DBH) & 4 (<1.3m) trees
 #sum all stems
@@ -235,6 +250,14 @@ ggplot(class4_trees[class_4 < 1000],
   labs(x = "Years since fire", y = "Regeneration density (stems/ha)",
        color = "Treatment") +
   theme_minimal(base_size = 14)
+
+
+
+
+
+
+
+
 
 
 # large live trees

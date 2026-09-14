@@ -1,6 +1,6 @@
 # Forage Volume Functions
 
-shrubDat <- fread("./01-data_inputs/FR_shrubVolumes.csv")
+shrubDat <- fread("./01_data_inputs/FR_shrubVolumes.csv")
 
 #' this can have overlapping cover - could be > 100% shrub cover (not just preferred for moose)
 #' 

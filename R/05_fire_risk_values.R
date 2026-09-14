@@ -5,14 +5,15 @@ library(data.table)
 library(ggplot2)
 library(lubridate)
 
-in_dir <- "Inputs"
+in_dir <- "01_data_inputs"
 out_dir <- "02_prepped_values"
 
 # Treatments -------------------------------------------------------------------------
 FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
 
 #Plot treatment cleaning
-FR_treatments[,`:=`(PlotID = as.factor(ID), Planted = as.factor(Planted))]
+FR_treatments[,`:=`(PlotID = as.factor(ID), 
+                    Planted = factor(Planted,levels = c("P","NP"), ordered = TRUE))]
 FR_treatments[, TimeSinceFire := 2020 - FIRE_YEAR]
 #for this paper, we don't need all the columns:
 plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire,FIRE_NAME)]
@@ -33,6 +34,12 @@ fuels_dt[,TSF := ifelse(TimeSinceFire <= 10, "<10",
                         ifelse(TimeSinceFire <= 20, "10-20",
                                ifelse(TimeSinceFire <= 40, "20-40",
                                       "40-60+")))]
+setnames(fuels_dt, c("Plot"), c("PlotID"))
+#fuels_dt[, Planted := factor(Planted, levels = c("P","NP"), ordered = TRUE)]
+#crown fuel loads
+fuel_loads <- unique(fuels_dt[,.(PlotID,Planted,TSF, TimeSinceFire,
+                                 cfl_total,cfl_ovrstry, cfl_midstry,
+                                 cbd_total, cbd_ovrstry, cbd_midstry)])
 
 #surface fire intensity:
 fuels_dt[, sfi := 18000 * hfros * sfc / 60]
@@ -66,10 +73,10 @@ fire_vals <- fuels_dt[, .(
   mn_75_preload = mean(LitPre[percentile > 74 & percentile < 76], na.rm = TRUE),
   mn_90_preload = mean(LitPre[percentile > 89 & percentile < 91], na.rm = TRUE),
   mn_95_preload = mean(LitPre[percentile > 94 & percentile < 96], na.rm = TRUE)
-  ), by = .(Plot)]
+  ), by = .(PlotID)]
 
 for (i in names(fire_vals))fire_vals[is.na(get(i)), (i):=0]
-setnames(fire_vals, "Plot","PlotID")
+#setnames(fire_vals, "Plot","PlotID")
 #rescale even if between 0 and 1??? 
 #scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 #cnames <- colnames(fire_vals)[ colnames(fire_vals)!="PlotID"]
@@ -99,7 +106,7 @@ contrasting_colors <- c("darkblue", "#E7B800","#4DAF4A","darkred")
 ggplot(graph_ind)+
   geom_point(aes(x = TimeSinceFire, y = value, colour = var1), alpha = 0.5)+
   geom_smooth(aes(x = TimeSinceFire, y = value, colour = var1), 
-              alpha = 0, method = "lm")+
+              alpha = 0, method = "loess")+
   labs(color = "Values")+
   scale_color_manual(labels = c("50th", "75th", "90th", "95th"), 
                      values = contrasting_colors)+
@@ -200,7 +207,8 @@ ggplot(fs)+
   geom_bar(aes(x = Planted,y = proportion, fill = fofem_severity), stat = "identity")+
   scale_fill_manual(
     values  = c("no trees" = "darkgreen","low" = "lightyellow","mod"= "orange","high" = "darkred"))+
-  facet_grid(c("fwi_percentile","TSF"))
+  facet_grid(c("fwi_percentile","TSF"))+
+  theme_minimal()
 
 ggplot(fs[fwi_percentile == "fwi_90"])+
   geom_bar(aes(x = Planted,y = proportion, fill = fofem_severity), stat = "identity")+
@@ -452,3 +460,167 @@ ggplot(Con_table[var_type == "DW1kRotCon"])+
   facet_grid(c("var_type","Planted"))+
   theme_minimal()+
   theme(strip.text.x = element_text(face="bold"),text=element_text(size=18))
+
+
+fuel_loads_long <- melt(fuel_loads, 
+                  id.vars = c("PlotID", "TSF", "Planted", "TimeSinceFire"), 
+                  measure.vars = c("cfl_total","cfl_ovrstry", "cfl_midstry",
+                                   "cbd_total", "cbd_ovrstry", "cbd_midstry"),
+                  variable.name = "Fuels",
+                  value.name = "Value")
+
+ggplot(fuel_loads_long, 
+       aes(x = TimeSinceFire, y = Value, colour = Planted)) +
+   geom_point(alpha = 0.7, size = 2) +
+  
+  # Optional: add trend line by Treatment
+  geom_smooth(aes(group = Planted, linetype = Planted), 
+              method = "loess", se = FALSE, linewidth = 0.8) +
+  
+  # Facet by structure variable
+  facet_wrap(~Fuels, scales = "free_y", ncol = 4) +
+  
+  # Colors & linetypes
+  scale_colour_scico_d(palette = "berlin") +
+  scale_linetype_manual(values = c("P" = "dashed", "NP" = "solid")) +
+  
+  # Labels
+  labs(
+    x = "Time Since Fire (years)",
+    y = "Value",
+    colour = "Treatment",
+    linetype = "Treatment"
+  ) +
+  
+  # Theme
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.title = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = "bottom",
+    strip.text = element_text(size = 12)
+  )
+
+
+
+
+
+
+site_cols <- c(
+  "uniqueID", "Location", "Sub_Location", "Unit",
+  "Sample_Year", "Treatment_Situation",
+  "lat", "long", "elevation", "aspect", "slope", "wuiDist",
+  "stand_type",
+  "FIRE_NAME", "ymd_wx", "m_wx", "d_wx", "md_wx"
+)
+
+
+
+fuels_simp <- fuels_dt[, !site_cols, with = FALSE]
+
+id.vars <- c("PlotID", "TSF", "Planted", "TimeSinceFire")
+meas.vars <- colnames(fuels_simp)[!colnames(fuels_simp) %in% c(id.vars,
+                                                               "month",
+                                                               "fire_type",
+                                                               "fofem_severity",
+                                                               "fuelType")]
+
+fuels_long <- melt(fuels_simp, 
+                   id.vars = id.vars,
+                   measure.vars = meas.vars,
+                   variable.name = "Fuels_Fire",
+                   value.name = "Value")
+
+grp_canopy <- c(
+  "pc", "ph", "cc",
+  "cfl_total", "cfl_ovrstry", "cfl_midstry",
+  "cbd_total", "cbd_ovrstry", "cbd_midstry",
+  "cbh", "cbh_ovrstry", "cbh_midstry",
+  "ht_total_live", "ht_ovrstry_live", 
+  "ht_midstry_live", "ht_midstry_dead",
+  "ccpFSG"
+)
+
+grp_surface <- c(
+  "gfl", "ffl_measured", "wfl_measured",
+  "sfc", "biomass_regen_live", "biomass_regen_dead",
+  "fuelType", "ftModifier"
+)
+
+grp_weather <- c(
+  "fwi", "bui", "dc", "dmc", "ffmc", "isi",
+  "pcp", "rh", "temp", "ws", "wd"
+)
+grp_fire_behavior <- c(
+  "hfros", "cfb", "cfc", "hfi",
+  "fire_type", "probability_ccp", "cac_ccp"
+)
+grp_emissions <- c(
+  "PM10F","PM10S","PM25F","PM25S",
+  "CH4F","CH4S","COF","COS",
+  "CO2F","CO2S","NOXF","NOXS","SO2F","SO2S",
+  "FlaDur","SmoDur","FlaCon","SmoCon"
+)
+grp_consumption <- c(
+  "LitPre","LitCon","LitPos",
+  "DW1Pre","DW1Con","DW1Pos",
+  "DW10Pre","DW10Con","DW10Pos",
+  "DW100Pre","DW100Con","DW100Pos",
+  "DW1kSndPre","DW1kSndCon","DW1kSndPos",
+  "DW1kRotPre","DW1kRotCon","DW1kRotPos",
+  "DufPre","DufCon","DufPos",
+  "HerPre","HerCon","HerPos",
+  "ShrPre","ShrCon","ShrPos",
+  "FolPre","FolCon","FolPos",
+  "BraPre","BraCon","BraPos"
+)
+grp_severity <- c(
+  "fofem_propBAKilled",
+  "fofem_severity",
+  "MSE", "DufDepPre", "DufDepCon", "DufDepPos",
+  "Lit-Equ", "DufCon-Equ", "DufRed-Equ",
+  "MSE-Equ", "Herb-Equ", "Shurb-Equ"
+)
+var_groups <- data.table(
+  variable = c(
+    grp_canopy,
+    grp_surface,
+    grp_weather,
+    grp_fire_behavior,
+    grp_emissions,
+    grp_consumption,
+    grp_severity
+  ),
+  group = c(
+    rep("Canopy & ladder fuels", length(grp_canopy)),
+    rep("Surface fuels", length(grp_surface)),
+    rep("Fire weather", length(grp_weather)),
+    rep("Fire behaviour", length(grp_fire_behavior)),
+    rep("Emissions", length(grp_emissions)),
+    rep("Fuel consumption", length(grp_consumption)),
+    rep("Severity indices", length(grp_severity))
+  )
+)
+fuels_long <- merge(
+  fuels_long,
+  var_groups,
+  by.x = "Fuels_Fire",
+  by.y = "variable",
+  all.x = TRUE
+)
+
+
+ggplot(fuels_long[group == unique(fuels_long$group)[6]],
+       aes(TimeSinceFire, Value, colour = Planted)) +
+  geom_point(alpha = 0.5) +
+      geom_smooth(method = "loess",se = FALSE) +
+      facet_wrap(~Fuels_Fire, scales = "free_y") +
+  theme_minimal()
+
+
+
+
+
+
+
+

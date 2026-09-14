@@ -1,10 +1,32 @@
-#Functions to get live trees for regen and trees 
+
+#Functions to get live trees for regen and trees - no species
 RegenDensity <- function(regenDat){
   #Regen - already accounted for sub-plot sampling, so can just use PHF here
-  RegenLive <- Regen[`Live/Dead`=="L"]
-  RegenLive[,PHF:=ifelse(`Sub-Plot`=="A1",100,200)][,SPH := Tally*PHF][,SdlHgt:=ifelse(Height_class=="0-30",1,2)]
-  PlotRegen <- RegenLive[,.(SPH=mean(SPH)),by=c("PlotID","Species","SdlHgt")] #take the mean of regen sub-plots
+  RegenLive <- regenDat[`Live/Dead`=="L"]
+  RegenLive[,PHF:= 
+              ifelse(`Sub-Plot`=="A1",
+                     100,
+                     200)][,SPH := Tally*PHF][,SdlHgt:= 
+                                                ifelse(`Height_class(cm)` =="0-30",
+                                                       1,2)]
+  subplot_regen <- RegenLive[, .(sumSPH = sum(SPH)),
+                             by = c("PlotID","Sub-Plot")]
+  PlotRegen <- subplot_regen[,.(mnSPH = mean(sumSPH),
+                            sdSPH = sd(sumSPH)),
+                         by=c("PlotID")] #take the mean of regen sub-plots
   return(PlotRegen)
+}
+
+assign_PHF <- function(treeDat){
+  ##Trees
+  FR_LiveTrees <- treeDat[!is.na(DBH)]
+  #deal with the different plot sizes and areas surveyed
+  FR_LiveTrees[,AreaSearchM2 := ifelse(`Sub-plot`=="A1",100, ifelse(`Sub-plot`=="A2",50,400))]
+  FR_LiveTrees[Notes=="only 1/4 of A1",AreaSearchM2:=100/4]
+  FR_LiveTrees[Notes=="only 1/2 of A1",AreaSearchM2:=100/2]
+  FR_LiveTrees[Notes=="only 1/4 of A2",AreaSearchM2:=50/4]
+  FR_LiveTrees[,PHF:=10000/AreaSearchM2]
+  
 }
 
 TreeDensity <- function(treeDat_a1,treeDat_b1, ClassSize){
@@ -35,7 +57,7 @@ TreeDensity <- function(treeDat_a1,treeDat_b1, ClassSize){
   return(PlotTrees)
   }
 
-SnagDensity <- function(treeDat_a1,treeDat_b1){
+SnagDensity <- function(treeDat_a1,treeDat_b1, ClassSize){
   ##Trees
   #UniSpecies <- unique(c(A1trees[Tree_class<3,Species],B1trees[Tree_class<3,Species],
   #                      Regen[`Live/Dead`=="L",Species]))#Species in plots:
@@ -49,7 +71,7 @@ SnagDensity <- function(treeDat_a1,treeDat_b1){
   FR_DeadTrees[Notes=="only 1/4 of A2",AreaSearchM2:=50/4]
   FR_DeadTrees[,PHF:=10000/AreaSearchM2] #accounting for smaller search areas
   
-  dbhClSize <- 5
+  dbhClSize <- ClassSize
   diamClasses <- seq(0,(max(na.omit(FR_DeadTrees[,DBH]))+dbhClSize), by=dbhClSize)
   for(j in 1:length(diamClasses)){
     FR_DeadTrees[DBH <= diamClasses[j] & DBH > diamClasses[j]-dbhClSize, DBH_bin := diamClasses[j]]

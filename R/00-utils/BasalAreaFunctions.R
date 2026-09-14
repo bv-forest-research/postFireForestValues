@@ -15,10 +15,9 @@ BAPHlive <- function(treeDat_a1,treeDat_b1){
   FR_LiveTrees[Notes == "only 1/4 of A2", AreaSearchM2 := 50 / 4]
   FR_LiveTrees[, PHF := 10000 / AreaSearchM2] #accounting for smaller search areas
   
-  FR_LiveTrees[, BA := pi * (DBH ^ 2 / 40000)]
-  FR_LiveTrees[, BAPH := BA * PHF]
+  FR_LiveTrees[,`:=`(BAPH = (pi * (DBH ^ 2 / 40000)) * PHF)]
   
-  PlotTrees <- FR_LiveTrees[, .(PlotID, Species, DBH, Height, BAPH)]
+  PlotTrees <- FR_LiveTrees[, .(PlotID, Species, DBH, Height, BAPH, PHF)]
   return(PlotTrees)
 }
 

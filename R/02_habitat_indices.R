@@ -89,7 +89,7 @@ PlotBAPHdead <- BAPHdead(A1trees, B1trees)
 # live
 PlotTree <- TreeDensity(A1trees, B1trees, ClassSize = 2)
 # dead
-PlotSnags <- SnagDensity(A1trees, B1trees)
+PlotSnags <- SnagDensity(A1trees, B1trees, ClassSize = 2)
 
 # Individual shrub species percent cover (calculated from their volumes)
 PlotShrubCov <- ShrubSpCov(ShrubVolume)
@@ -388,6 +388,86 @@ PlotGrizzly[is.na(PlotGrizzly)] <- 0
 # GRIZZLY BEAR HABITAT INDEX
 PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by = PlotID]
 
+#-- ALL SPECIES 
+HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotFisher, ("FisherHabitat") := mget("FisherHabitat"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotGoshawk, ("GoshawkHabitat") := mget("GoshawkHabitat"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotHare, ("HareHabitat") := mget("HareHabitat"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotSquirrel, ("SquirrelHabitat") := mget("SquirrelHabitat"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotSmMammal, ("SmMammalHabitat") := mget("SmMammalHabitat"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotGrouse, ("GrouseHabitat") := mget("GrouseHabitat"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotGrizzly, ("GrizzlyHabitat") := mget("GrizzlyHabitat"), on = "PlotID"]
+
+# export 
+write.csv(HabitatIndices, file.path(out_dir,"hab_ind.csv"), row.names = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # DROPPING BIRDS
 # #-- BIRDS *somethings are not right here*
 # # 1) Snag-associates
@@ -672,18 +752,6 @@ plot(PlotBirds$decSnagSPH, PlotBirds$edge)
 
 
 
-#-- ALL SPECIES 
-HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotFisher, ("FisherHabitat") := mget("FisherHabitat"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotGoshawk, ("GoshawkHabitat") := mget("GoshawkHabitat"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotHare, ("HareHabitat") := mget("HareHabitat"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotSquirrel, ("SquirrelHabitat") := mget("SquirrelHabitat"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotSmMammal, ("SmMammalHabitat") := mget("SmMammalHabitat"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotGrouse, ("GrouseHabitat") := mget("GrouseHabitat"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotGrizzly, ("GrizzlyHabitat") := mget("GrizzlyHabitat"), on = "PlotID"]
-
-# export 
-write.csv(HabitatIndices, file.path(out_dir,"hab_ind.csv"), row.names = FALSE)
 
 
 
