@@ -97,10 +97,6 @@ PlotShrubCov <- ShrubSpCov(ShrubVolume)
 PlotHuckberry <- Huckberry(PlotShrubCov, PlotCrown)
 PlotThermalForage <- ThermalForage(PlotShrubCov, PlotCrown)
 
-# Treatment
-# add time since fire
-FR_treatments[, TimeSinceFire := 2020 - FIRE_YEAR]
-
 #-- MARTEN -----------------------------------------------------------------------------------------
 # 1) quality cwd (Godbout and Ouellet, 2010; Lofroth 1993; Wiebe et al., 2014)
 # 2) >=30-80% crown closure (more than 80% not any better) (Bull et al. 2005; Godbout and Ouellet, 2010)
@@ -388,8 +384,15 @@ PlotGrizzly[is.na(PlotGrizzly)] <- 0
 # GRIZZLY BEAR HABITAT INDEX
 PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by = PlotID]
 
-#-- MOOSE
-# Moose - winter
+#-- MOOSE-----------------------------------------------------------------------------------
+# Moose - winter forage
+# 1) Lower slope percentage
+# 2) High  winter forage species
+# 3) More mature structural stage
+# 4)So on
+
+# 1.Slope
+PlotMoose_winterforage <- merge(line, PlotShrubCov)
 
 #-- ALL SPECIES 
 HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
