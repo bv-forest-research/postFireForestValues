@@ -9,7 +9,7 @@
 # Load libraries
 library(data.table)
 library(tidyverse)
-#library(ggpubr)
+library(ggpubr)
 
 
 in_dir <- "01_data_inputs"
