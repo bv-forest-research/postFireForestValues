@@ -15,8 +15,8 @@ library(tidyverse)
 library(ggpubr)
 
 
-in_dir <- "01-data_inputs"
-out_dir <- "02-prepped_values"
+in_dir <- "01_data_inputs"
+out_dir <- "02_prepped_values"
 
 files_to_source <- list.files("./R/00-utils/", pattern = "Function", 
                               full.names = TRUE)
