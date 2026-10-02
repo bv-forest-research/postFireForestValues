@@ -410,27 +410,39 @@ PlotMoose_winterforage[, SlopeSuit := ifelse(Slope_PC >= 40 & Slope_PC <= 60 & S
                                       ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit)))] #check to make sure
 
 # 3. Structural stage (non-forested stands)
-# if 2a, 2b, 2c, or 2d, then if 1 or 4 = 4, if 4 = 5
+# if 2a, 2b, 2c, or 2d, then if 1 or 2 = 4, if 4 = 5
 # if 3a, and average height of browse is < 50 cm, then is 1, 2, or 3, +2, if 4 = 5
-shrubDat <- ShrubVolume
+PlotMoose_winterforage[, StructStage := "2a"] #TEMPORARY check, will need to figure out from photos
+PlotMoose_winterforage[, SSSuit := SlopeSuit]
+PlotMoose_winterforage[, SSSuit := ifelse(StructStage %in% c("2a", "2b", "2c", "2d") & SSSuit %in% c(1, 2), 4,
+  ifelse(StructStage %in% c("2a", "2b", "2c", "2d") & SSSuit == 4,5,SSSuit))]
+
+shrubDat <- ShrubVolume #check, running function from ForageVolumeFunctions.R
 shrubDat[, Species := toupper(Species)]
 shrubDat[, Species := sub("_", "", Species)]
-
 shrubDat <- shrubDat[!(Species %in% c("PYROSP", "ASTECON"))]
-
 shrubDat[grepl("SALI", Species), Species := "SALISPP"]
 
 AvgFoliageHeight <- shrubDat[,.(MeanFoliageHeight = mean(Foliage_Height, na.rm = TRUE)),by = .(PlotID)]
 
-PlotMoose_winterforage <- merge(PlotMoose_winterforage, AvgFoliageHeight)
+PlotMoose_winterforage <- merge(PlotMoose_winterforage, AvgFoliageHeight,by = "PlotID")
 PlotMoose_winterforage[, FoliageHeightSuit := SlopeSuit]
-PlotMoose_winterforage[, FoliageHeightSuit := ifelse(AvgFoliageHeight < 50 & FoliageHeightSuit %in% c(1, 2, 3,4),FoliageHeightSuit + 1,
-                                             FoliageHeightSuit )] #check to make sure
+PlotMoose_winterforage[, FoliageHeightSuit := ifelse(StructStage == "3a" & MeanFoliageHeight < 50 & FoliageHeightSuit %in% 1:3, FoliageHeightSuit + 2,
+                                              ifelse(StructStage == "3a" & MeanFoliageHeight < 50 & FoliageHeightSuit == 4, 5, FoliageHeightSuit))]
 # 4. Stand type, crown closure, and forage height
 # if stand type is broadleaf AND average height of browse is < 50 cm, then is 1, 2, or 3, +2
 # if stand type is conifer OR mixed AND crown closure is <= 40% AND average height of browse is < 50 cm, then is 1, 2, or 3, +1
 
 # Moose - winter cover
+# 1) Structural stage
+# 2) Lower slope percentage
+# 3) Crown closure
+# 4) Stand type
+
+# 1. Structural stage
+# Structural Stage 6 or 7 = 1,...
+
+
 # logistic function replicating Kelly & Hodges 2020
 PlotMoose_wintercover <- merge(plot_treatments, PlotTree[DBH_bin >= 20, .(SPH = sum(SPH)), by=PlotID], 
                                 all.x = TRUE) # copied from squirrel, need to check
