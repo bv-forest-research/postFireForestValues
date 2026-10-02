@@ -3,6 +3,7 @@ library(data.table)
 library(ggplot2)
 library(scico)
 library(ggrepel)
+library(mgcv)
 
 in_dir <- "02_prepped_values"
 out_dir <- "03_outputs"
@@ -44,12 +45,13 @@ FR_treatments <- fread(file.path("01_data_inputs","FR_Treatments.csv"))
 FR_treatments[,`:=`(PlotID = as.factor(ID), Planted = as.factor(Planted))]
 FR_treatments[, TimeSinceFire := 2020 - FIRE_YEAR]
 #for this paper, we don't need all the columns:
-plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire)]
+plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire, FIRE_NAME)]
 plot_treatments[,TSF := ifelse(TimeSinceFire <= 10, "<10",
                                ifelse(TimeSinceFire <= 20, "10-20",
                                       ifelse(TimeSinceFire <= 40, "20-40",
                                              "40-60+")))]
 plot_treatments[, Planted := factor(Planted, levels = c("P", "NP"))]
+plot_treatments[, FIRE_NAME := as.factor(FIRE_NAME)]
 pre_post_treat <- fread(file.path(in_dir, "jb_treatments.csv"))
 #management class "SM" = some mix, "PFO" = post-fire only, "NM" = no management
 plot_treatments[, management_class := pre_post_treat$management_class]
@@ -90,7 +92,8 @@ plot_attributes <- plot_attributes[
 plot_attributes[, `:=`(PlotID = plot_treatments$PlotID, 
                        TSF = plot_treatments$TSF,
                        Planted = plot_treatments$Planted,
-                       TimeSinceFire = plot_treatments$TimeSinceFire)]
+                       TimeSinceFire = plot_treatments$TimeSinceFire,
+                       FIRE_NAME = plot_treatments$FIRE_NAME)]
 
 # ---------------------------------------------------------------------------
 # Treatment x time significance testing (MANOVA), run ahead of the MCDM
@@ -105,6 +108,7 @@ manova_dt <- copy(plot_attributes)
 manova_dt[, Planted := factor(plot_treatments$Planted)]
 manova_dt[, management_class := factor(plot_treatments$management_class)]
 manova_dt[, Planted_ord := factor(Planted, ordered = TRUE)]
+manova_dt[, FIRE_NAME := factor(plot_treatments$FIRE_NAME)]
 
 habitat_species_cols <- c(
   "MartenHabitat", "FisherHabitat", "GoshawkHabitat",
@@ -171,16 +175,19 @@ manova_results <- rbindlist(
 setnames(manova_results, "Pr(>F)", "p_value", skip_absent = TRUE)
 setcolorder(manova_results, c("Category", "NResponses", "Term"))
 
-# Univariate follow-up (GAM) - which individual responses drive any multivariate
+# Univariate follow-up (HGAM) - which individual responses drive any multivariate
 # signal. Planted is fitted as an ordered factor with a shared smooth plus a
 # "difference smooth" (Simpson 2018): the shared s(TimeSinceFire) tests the
 # overall time trend, the Planted_ord parametric term tests the main effect,
 # and the by-factor difference smooth tests the Planted x Time interaction -
 # all three read directly from one model's summary table (no unreliable
-# nested-model comparisons needed).
+# nested-model comparisons needed). FIRE_NAME is added as a random-effect
+# smooth (intercept per fire) so plots within the same fire aren't treated
+# as independent.
 run_univariate <- function(var, data) {
   form <- stats::as.formula(paste0(
-    "`", var, "` ~ Planted_ord + s(TimeSinceFire, k = 4) + s(TimeSinceFire, by = Planted_ord, k = 4)"
+    "`", var, "` ~ Planted_ord + s(TimeSinceFire, k = 4) + 
+    s(TimeSinceFire, by = Planted_ord, k = 4) + s(FIRE_NAME, bs = 're')"
   ))
   fit <- tryCatch(mgcv::gam(form, data = data, method = "REML"), error = function(e) NULL)
   if (is.null(fit)) return(NULL)
@@ -194,7 +201,8 @@ run_univariate <- function(var, data) {
   time_range <- range(data$TimeSinceFire, na.rm = TRUE)
   newdata <- data.frame(
     TimeSinceFire = time_range,
-    Planted_ord = factor(levels(data$Planted_ord)[1], levels = levels(data$Planted_ord))
+    Planted_ord = factor(levels(data$Planted_ord)[1], levels = levels(data$Planted_ord)),
+    FIRE_NAME = factor(data$FIRE_NAME[1], levels = levels(data$FIRE_NAME))
   )
   term_pred <- tryCatch(predict(fit, newdata = newdata, type = "terms"), error = function(e) NULL)
   time_direction <- NA_real_
@@ -203,26 +211,80 @@ run_univariate <- function(var, data) {
     if (length(time_col) == 1) time_direction <- sign(term_pred[2, time_col] - term_pred[1, time_col])
   }
 
-  data.table(
+  stats_dt <- data.table(
     Variable = var,
     Term = c("Planted", "TimeSinceFire", "Planted:TimeSinceFire"),
     F_value = c(unname(p_row["t value"])^2, s_tab[1, "F"], s_tab[2, "F"]),
     p_value = c(unname(p_row["Pr(>|t|)"]), s_tab[1, "p-value"], s_tab[2, "p-value"]),
     Direction = c(sign(unname(p_row["Estimate"])), time_direction, NA_real_)
   )
+
+  # Population-level predicted curve by Planted group (FIRE_NAME random
+  # effect excluded) - used later to plot the shape of the fitted GAM.
+  pred_grid <- data.table::CJ(
+    TimeSinceFire = seq(time_range[1], time_range[2], length.out = 50),
+    Planted_ord = levels(data$Planted_ord)
+  )
+  pred_grid[, `:=`(
+    Planted_ord = factor(Planted_ord, levels = levels(data$Planted_ord)),
+    FIRE_NAME = factor(data$FIRE_NAME[1], levels = levels(data$FIRE_NAME))
+  )]
+  pred <- tryCatch(
+    predict(fit, newdata = pred_grid, type = "response", se.fit = TRUE, exclude = "s(FIRE_NAME)"),
+    error = function(e) NULL
+  )
+  pred_dt <- NULL
+  if (!is.null(pred)) {
+    pred_dt <- pred_grid[, .(TimeSinceFire, Planted_ord = as.character(Planted_ord))]
+    pred_dt[, `:=`(Variable = var, fit = pred$fit, se = pred$se.fit)]
+  }
+
+  list(stats = stats_dt, pred = pred_dt)
 }
 
-univariate_results <- rbindlist(
-  lapply(setdiff(names(response_categories), "All"), function(cat_name) {
-    vars <- drop_constant(response_categories[[cat_name]], manova_dt)
-    res <- rbindlist(lapply(vars, run_univariate, data = manova_dt), fill = TRUE)
-    if (nrow(res) == 0) return(NULL)
-    res[, Category := cat_name]
-    res
-  }),
-  fill = TRUE
-)
+# A reduced model (no Planted term) for variables where only the time trend
+# is significant - gives a single pooled GAM curve instead of two group lines.
+fit_time_only_curve <- function(var, data) {
+  form <- stats::as.formula(paste0(
+    "`", var, "` ~ s(TimeSinceFire, k = 4) + s(FIRE_NAME, bs = 're')"
+  ))
+  fit <- tryCatch(mgcv::gam(form, data = data, method = "REML"), error = function(e) NULL)
+  if (is.null(fit)) return(NULL)
+  time_range <- range(data$TimeSinceFire, na.rm = TRUE)
+  pred_grid <- data.table(
+    TimeSinceFire = seq(time_range[1], time_range[2], length.out = 50),
+    FIRE_NAME = factor(data$FIRE_NAME[1], levels = levels(data$FIRE_NAME))
+  )
+  pred <- tryCatch(
+    predict(fit, newdata = pred_grid, type = "response", se.fit = TRUE, exclude = "s(FIRE_NAME)"),
+    error = function(e) NULL
+  )
+  if (is.null(pred)) return(NULL)
+  data.table(
+    TimeSinceFire = pred_grid$TimeSinceFire,
+    Planted_ord = "Pooled",
+    Variable = var,
+    fit = pred$fit,
+    se = pred$se.fit
+  )
+}
+
+univariate_fits <- lapply(setdiff(names(response_categories), "All"), function(cat_name) {
+  vars <- drop_constant(response_categories[[cat_name]], manova_dt)
+  res <- lapply(vars, run_univariate, data = manova_dt)
+  res <- res[!vapply(res, is.null, logical(1))]
+  if (length(res) == 0) return(NULL)
+  stats_dt <- rbindlist(lapply(res, `[[`, "stats"), fill = TRUE)
+  stats_dt[, Category := cat_name]
+  pred_dt <- rbindlist(lapply(res, `[[`, "pred"), fill = TRUE)
+  pred_dt[, Category := cat_name]
+  list(stats = stats_dt, pred = pred_dt)
+})
+univariate_fits <- univariate_fits[!vapply(univariate_fits, is.null, logical(1))]
+
+univariate_results <- rbindlist(lapply(univariate_fits, `[[`, "stats"), fill = TRUE)
 setcolorder(univariate_results, c("Category", "Variable", "Term"))
+univariate_pred_dt <- rbindlist(lapply(univariate_fits, `[[`, "pred"), fill = TRUE)
 
 fwrite(manova_results, file.path(out_dir, "manova_planted_time_summary.csv"))
 fwrite(univariate_results, file.path(out_dir, "univariate_planted_time_summary.csv"))
@@ -289,6 +351,104 @@ ggsave(
   device = "jpeg", dpi = 300, bg = "white",
   width = 9.5, height = 0.28 * uniqueN(univariate_plot_dt$Variable) + 2
 )
+
+# ---------------------------------------------------------------------------
+# Panel plots showing the shape of each significant univariate GAM fit:
+#  - Planted x Time significant (or both main effects significant): two
+#    fitted smooth lines (one per Planted group) vs time.
+#  - Only Time since fire significant: a single pooled smooth line vs time.
+#  - Only Planted significant: a boxplot of raw values by Planted group.
+#  - Nothing significant: excluded from these figures.
+# ---------------------------------------------------------------------------
+sig_wide <- dcast(univariate_results, Category + Variable ~ Term, value.var = "p_value")
+setnames(
+  sig_wide,
+  c("Planted", "TimeSinceFire", "Planted:TimeSinceFire"),
+  c("p_planted", "p_time", "p_interaction"),
+  skip_absent = TRUE
+)
+sig_wide[, `:=`(
+  planted_sig = !is.na(p_planted) & p_planted < 0.05,
+  time_sig = !is.na(p_time) & p_time < 0.05,
+  interaction_sig = !is.na(p_interaction) & p_interaction < 0.05
+)]
+sig_wide[, PlotType := fifelse(
+  interaction_sig | (time_sig & planted_sig), "grouped_line",
+  fifelse(time_sig, "single_line",
+          fifelse(planted_sig, "boxplot", "none"))
+)]
+
+# Fire effects are shown in their own figure elsewhere, so exclude them here.
+sig_wide <- sig_wide[!grepl("^Fire_", Category)]
+
+grouped_line_vars <- sig_wide[PlotType == "grouped_line", Variable]
+single_line_vars <- sig_wide[PlotType == "single_line", Variable]
+boxplot_vars <- sig_wide[PlotType == "boxplot", Variable]
+
+curve_dt <- rbindlist(list(
+  univariate_pred_dt[Variable %in% grouped_line_vars],
+  rbindlist(lapply(single_line_vars, fit_time_only_curve, data = manova_dt), fill = TRUE)
+), fill = TRUE)
+
+if (nrow(curve_dt) > 0) {
+  curve_dt[sig_wide, Category := i.Category, on = "Variable"]
+  curve_dt[, Planted_ord := factor(Planted_ord, levels = c("P", "NP", "Pooled"))]
+  curve_dt[, `:=`(lower = fit - 1.96 * se, upper = fit + 1.96 * se)]
+  # Order variables by category so grouped facets cluster together.
+  var_order <- unique(curve_dt[order(Category, Variable), Variable])
+  curve_dt[, Variable := factor(Variable, levels = var_order)]
+
+  p_gam_curves <- ggplot(curve_dt, aes(x = TimeSinceFire, y = fit, colour = Planted_ord, fill = Planted_ord)) +
+    geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, colour = NA) +
+    geom_line(linewidth = 1) +
+    facet_wrap(~Category + Variable, scales = "free_y", ncol = ceiling(sqrt(uniqueN(curve_dt$Variable)))) +
+    scale_colour_manual(values = c(P = "#CC6677", NP = "#4477AA", Pooled = "#228833"), drop = TRUE) +
+    scale_fill_manual(values = c(P = "#CC6677", NP = "#4477AA", Pooled = "#228833"), drop = TRUE) +
+    theme_minimal(base_size = 12) +
+    theme(strip.text = element_text(face = "bold"), panel.grid.minor = element_blank()) +
+    labs(
+      x = "Time since fire", y = "Fitted value", colour = "Planted", fill = "Planted",
+      title = "Shape of significant GAM fits by response variable",
+      subtitle = "Two lines = significant Planted x Time (or both main effects); one line = time trend only"
+    )
+
+  ggsave(
+    filename = "univariate_gam_curves.jpg", plot = p_gam_curves, path = out_dir,
+    device = "jpeg", dpi = 300, bg = "white",
+    width = 4 * ceiling(sqrt(uniqueN(curve_dt$Variable))), height = 3.5 * ceiling(sqrt(uniqueN(curve_dt$Variable)))
+  )
+}
+
+if (length(boxplot_vars) > 0) {
+  box_dt <- melt(
+    manova_dt,
+    id.vars = "Planted_ord",
+    measure.vars = boxplot_vars,
+    variable.name = "Variable",
+    value.name = "Value"
+  )
+  box_dt[sig_wide, Category := i.Category, on = "Variable"]
+  # Order variables by category so grouped facets cluster together.
+  var_order <- unique(box_dt[order(Category, Variable), Variable])
+  box_dt[, Variable := factor(Variable, levels = var_order)]
+
+  p_gam_boxplots <- ggplot(box_dt, aes(x = Planted_ord, y = Value, fill = Planted_ord)) +
+    geom_boxplot() +
+    facet_wrap(~Category + Variable, scales = "free_y", ncol = ceiling(sqrt(length(boxplot_vars)))) +
+    scale_fill_manual(values = c(P = "#CC6677", NP = "#4477AA")) +
+    theme_minimal(base_size = 12) +
+    theme(strip.text = element_text(face = "bold"), panel.grid.minor = element_blank()) +
+    labs(
+      x = "Planted", y = "Value", fill = "Planted",
+      title = "Responses with a significant Planted effect only (no time trend)"
+    )
+
+  ggsave(
+    filename = "univariate_gam_boxplots.jpg", plot = p_gam_boxplots, path = out_dir,
+    device = "jpeg", dpi = 300, bg = "white",
+    width = 4 * ceiling(sqrt(length(boxplot_vars))), height = 3.5 * ceiling(sqrt(length(boxplot_vars)))
+  )
+}
 
 
 # MANOVA summary figure - Pillai's trace (tile shading) and significance (label)

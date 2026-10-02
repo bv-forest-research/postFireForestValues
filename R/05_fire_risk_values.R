@@ -165,6 +165,156 @@ ggplot(ft[fwi_percentile == "fwi_90"])+
   theme(legend.position = "bottom",axis.text.x = element_text(angle = 45, hjust = 1))+
   theme(strip.text.x = element_text(face="bold"),text=element_text(size=18))
 
+# ---------------------------------------------------------------------------
+# Suggested figure: change in fire type with time since fire and treatment,
+# using 10-year time bins (finer resolution than the 4 TSF categories above)
+# at the 90th percentile fire weather scenario used elsewhere in this script.
+# A stacked-proportion area chart shows the shift in fire type composition
+# as a continuous trend over time, split by Planted.
+# ---------------------------------------------------------------------------
+fire_type_levels <- c("Surface Fire - No Canopy Fuel", "Surface Fire",
+                      "Passive Crown Fire", "Active Crown Fire")
+time_breaks <- seq(0, ceiling(max(fuels_dt$TimeSinceFire, na.rm = TRUE) / 10) * 10, by = 10)
+fuels_dt[, TimeBinMid := time_breaks[findInterval(TimeSinceFire, time_breaks, all.inside = TRUE)] + 5]
+
+ft_time <- fuels_dt[percentile > 89 & percentile < 91, .N, by = .(Planted, TimeBinMid, fire_type)]
+full_time_grid <- CJ(Planted = unique(ft_time$Planted), TimeBinMid = unique(ft_time$TimeBinMid),
+                     fire_type = fire_type_levels)
+ft_time <- merge(full_time_grid, ft_time, by = c("Planted", "TimeBinMid", "fire_type"), all.x = TRUE)
+ft_time[is.na(N), N := 0]
+ft_time[, fire_type := factor(fire_type, levels = fire_type_levels)]
+
+p <- ggplot(ft_time, aes(x = TimeBinMid, y = N, fill = fire_type)) +
+  geom_bar(position = "fill", alpha = 0.9, stat = "identity") +
+  facet_wrap(~Planted) +
+  scale_fill_manual(values = c(
+    "Surface Fire - No Canopy Fuel" = "darkgreen",
+    "Surface Fire" = "lightyellow",
+    "Passive Crown Fire" = "orange",
+    "Active Crown Fire" = "darkred"
+  )) +
+  theme_minimal(base_size = 14) +
+  theme(strip.text = element_text(face = "bold"), legend.position = "bottom") +
+  labs(
+    x = "Time since fire (years)", y = "Proportion of simulations", fill = "Fire type",
+    title = "Change in fire type with time since fire and treatment",
+    subtitle = "90th percentile fire weather"
+  )
+ggsave(
+    filename = "fire_type_by_time.jpg", plot = p, path = "03_outputs",
+    device = "jpeg", dpi = 300, bg = "white")
+
+# ---------------------------------------------------------------------------
+# Suggested figure: proportion of simulations classified as surface fire
+# (with or without canopy fuel, i.e. not a crown fire) over time since fire,
+# split by Planted, with one line per fire-weather percentile. Also repeated
+# for peak fire season (July-August) only, to check whether the trend differs
+# when the shoulder-season weather draws are excluded.
+# ---------------------------------------------------------------------------
+surface_fire_types <- c("Surface Fire", "Surface Fire - No Canopy Fuel")
+percentiles <- c(50, 75, 90, 95)
+contrasting_colors <- c("darkblue", "#E7B800","#4DAF4A","darkred")
+
+build_surface_time <- function(data) {
+  rbindlist(lapply(percentiles, function(p) {
+    data[
+      percentile > (p - 1) & percentile < (p + 1),
+      .(prop_surface = mean(fire_type %in% surface_fire_types)),
+      by = .(Planted, TimeSinceFire)
+    ][, fwi_percentile := factor(p)]
+  }))
+}
+
+plot_surface_time <- function(surface_time, subtitle) {
+  ggplot(surface_time, aes(x = TimeSinceFire, y = prop_surface, colour = fwi_percentile, fill = fwi_percentile)) +
+    geom_smooth(linewidth = 1, alpha = 0.1) +
+    geom_point(size = 1.5, alpha = 0.6) +
+    facet_wrap(~Planted) +
+    scale_colour_manual(labels = c("50th", "75th", "90th", "95th"), values = contrasting_colors,
+                        name = "Fire weather\npercentile") +
+    scale_fill_manual(labels = c("50th", "75th", "90th", "95th"), values = contrasting_colors,
+                      name = "Fire weather\npercentile") +
+    theme_minimal(base_size = 14) +
+    theme(strip.text = element_text(face = "bold")) +
+    labs(
+      x = "Time since fire (years)", y = "Proportion surface fire",
+      title = "Proportion of plots in surface fire (vs. crown fire) over time",
+      subtitle = subtitle
+    )
+}
+
+p_surface_time <- plot_surface_time(
+  build_surface_time(fuels_dt),
+  "Surface fire = 'Surface Fire' or 'Surface Fire - No Canopy Fuel'"
+)
+ggsave(
+    filename = "surface_fire_proportion_over_time.jpg", plot = p_surface_time, path = "03_outputs",
+    device = "jpeg", dpi = 300, bg = "white", width = 9, height = 5.5)
+
+p_surface_time_peak <- plot_surface_time(
+  build_surface_time(fuels_dt[month %in% c("July", "August")]),
+  "Peak fire season only (July-August)"
+)
+ggsave(
+    filename = "surface_fire_proportion_over_time_peak_season.jpg", plot = p_surface_time_peak, path = "03_outputs",
+    device = "jpeg", dpi = 300, bg = "white", width = 9, height = 5.5)
+
+# ---------------------------------------------------------------------------
+# Suggested figure: proportion of simulations classified as crown fire
+# (active vs passive) over time since fire, split by Planted, with one line
+# per fire-weather percentile - solid for active crown fire, dashed for
+# passive crown fire. Also repeated for peak fire season (July-August) only.
+# ---------------------------------------------------------------------------
+crown_fire_types <- c("Active Crown Fire", "Passive Crown Fire")
+
+build_crown_time <- function(data) {
+  rbindlist(lapply(percentiles, function(p) {
+    rbindlist(lapply(crown_fire_types, function(ct) {
+      data[
+        percentile > (p - 1) & percentile < (p + 1),
+        .(prop_crown = mean(fire_type == ct)),
+        by = .(Planted, TimeSinceFire)
+      ][, `:=`(fwi_percentile = factor(p), crown_type = ct)]
+    }))
+  }))
+}
+
+plot_crown_time <- function(crown_time, subtitle) {
+  ggplot(crown_time, aes(x = TimeSinceFire, y = prop_crown, colour = fwi_percentile,
+                         fill = fwi_percentile, linetype = crown_type)) +
+    geom_smooth(linewidth = 1, alpha = 0.1) +
+    geom_point(size = 1.5, alpha = 0.6) +
+    facet_wrap(~Planted) +
+    scale_colour_manual(labels = c("50th", "75th", "90th", "95th"), values = contrasting_colors,
+                        name = "Fire weather\npercentile") +
+    scale_fill_manual(labels = c("50th", "75th", "90th", "95th"), values = contrasting_colors,
+                      name = "Fire weather\npercentile") +
+    scale_linetype_manual(values = c("Active Crown Fire" = "solid", "Passive Crown Fire" = "dashed"),
+                          name = "Crown fire type") +
+    theme_minimal(base_size = 14) +
+    theme(strip.text = element_text(face = "bold")) +
+    labs(
+      x = "Time since fire (years)", y = "Proportion crown fire",
+      title = "Proportion of plots in crown fire over time",
+      subtitle = subtitle
+    )
+}
+
+p_crown_time <- plot_crown_time(
+  build_crown_time(fuels_dt),
+  "Solid = active crown fire; dashed = passive crown fire"
+)
+ggsave(
+    filename = "crown_fire_proportion_over_time.jpg", plot = p_crown_time, path = "03_outputs",
+    device = "jpeg", dpi = 300, bg = "white", width = 9, height = 5.5)
+
+p_crown_time_peak <- plot_crown_time(
+  build_crown_time(fuels_dt[month %in% c("July", "August")]),
+  "Solid = active crown fire; dashed = passive crown fire. Peak fire season only (July-August)"
+)
+ggsave(
+    filename = "crown_fire_proportion_over_time_peak_season.jpg", plot = p_crown_time_peak, path = "03_outputs",
+    device = "jpeg", dpi = 300, bg = "white", width = 9, height = 5.5)
 
 # Fire severity -----------------------
 full_grid <- CJ(Planted = unique(fuels_dt$Planted),
