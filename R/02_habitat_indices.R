@@ -393,12 +393,13 @@ PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by
 
 # 1. Available moose winter forage
 # > 40% = 1, >20-40% = 2, >10-20% = 3, 5-10% = 4, <5% = 5
-MooseWinterBrowseSpecies <- c("AMELALN","ROSAACI","SALISPP","VIBUEDU","PAXIMYR","CORNSTO", "SORBSIT","SORBSCO","RIBESP",
-                              "RIBELAC","RIBEHUD","RIBELAX", "RIBETRI","RIBEGLA","AC","AT","BL","EP","BETUGLA_VAR_GLA") #check species
-PlotMoose_winterforage <- dcast(PlotShrubCov[Species %in% MooseWinterBrowseSpecies], PlotID ~ paste0(Species, "_PerCov"),
-  value.var = "PerCov", fill = 0)
-PlotMoose_winterforage[, MooseWinterBrowsePerCov := rowSums(.SD),
-                       .SDcols = patterns("_PerCov$")]
+MooseWinterBrowseSpecies <- c("AC", "AMELALN", "AT", "BETUGLA_VAR_GLA", "BL", "CORNSTO","EP", "PAXIMYR", "RIBESP", "RIBEGLA", 
+                              "RIBEHUD", "RIBELAC","RIBELAX", "RIBETRI", "ROSAACI", "SALISPP", "SORBSCO", "SORBSIT", "VIBUEDU") #check species
+#PlotMoose_winterforage <- dcast(PlotShrubCov[Species %in% MooseWinterBrowseSpecies], PlotID ~ paste0(Species, "_PerCov"), value.var = "PerCov", fill = 0)
+#PlotMoose_winterforage[, MooseWinterBrowsePerCov := rowSums(.SD),.SDcols = patterns("_PerCov$")]
+
+PlotMoose_winterforage <- PlotShrubCov[Species %in% MooseWinterBrowseSpecies,.(MooseWinterBrowsePerCov = sum(PerCov)), by = PlotID]
+
 PlotMoose_winterforage[, MVForageSuit := ifelse(MooseWinterBrowsePerCov > 40, 1, ifelse(MooseWinterBrowsePerCov > 20, 2, 
                                         ifelse(MooseWinterBrowsePerCov > 10, 3, ifelse(MooseWinterBrowsePerCov >= 5, 4, 5))))]
 # 2. Slope <40%
@@ -408,7 +409,26 @@ PlotMoose_winterforage[, SlopeSuit := ifelse(Slope_PC >= 40 & Slope_PC <= 60 & S
                                       ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
                                       ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit)))] #check to make sure
 
-# Structural Stage 
+# 3. Structural stage (non-forested stands)
+# if 2a, 2b, 2c, or 2d, then if 1 or 4 = 4, if 4 = 5
+# if 3a, and average height of browse is < 50 cm, then is 1, 2, or 3, +2, if 4 = 5
+shrubDat <- ShrubVolume
+shrubDat[, Species := toupper(Species)]
+shrubDat[, Species := sub("_", "", Species)]
+
+shrubDat <- shrubDat[!(Species %in% c("PYROSP", "ASTECON"))]
+
+shrubDat[grepl("SALI", Species), Species := "SALISPP"]
+
+AvgFoliageHeight <- shrubDat[,.(MeanFoliageHeight = mean(Foliage_Height, na.rm = TRUE)),by = .(PlotID)]
+
+PlotMoose_winterforage <- merge(PlotMoose_winterforage, AvgFoliageHeight)
+PlotMoose_winterforage[, FoliageHeightSuit := SlopeSuit]
+PlotMoose_winterforage[, FoliageHeightSuit := ifelse(AvgFoliageHeight < 50 & FoliageHeightSuit %in% c(1, 2, 3,4),FoliageHeightSuit + 1,
+                                             FoliageHeightSuit )] #check to make sure
+# 4. Stand type, crown closure, and forage height
+# if stand type is broadleaf AND average height of browse is < 50 cm, then is 1, 2, or 3, +2
+# if stand type is conifer OR mixed AND crown closure is <= 40% AND average height of browse is < 50 cm, then is 1, 2, or 3, +1
 
 # Moose - winter cover
 # logistic function replicating Kelly & Hodges 2020
