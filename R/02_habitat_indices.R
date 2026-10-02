@@ -288,7 +288,7 @@ PlotSquirrel[, CWDvol := 1-exp(-0.0045*CWDvol)]
 PlotSquirrel[, SquirrelHabitat := round(sum(1*SPH, 0.75*conComp, 0.6*CWDvol), digits = 2), by=PlotID]
 
 
-#-- SMALL MAMMALS (deer mice (Peromyscus maniculatus), southern red backed voles (C. gapperi))
+#-- SMALL MAMMALS (deer mice (Peromyscus maniculatus), southern red backed voles (C. gapperi))-----
 # 1) abundant (>50m3/ha) decayed (class 4&5) CWD (Fauteaux et al., 2012; Fauteux et al., 2013), and
 # 2) live tree  (>9 cm dbh) basal area >= 15 m2/ha (Fauteux., 2013; Sullivan and Sullivan, 2002)
 
@@ -386,13 +386,43 @@ PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by
 
 #-- MOOSE-----------------------------------------------------------------------------------
 # Moose - winter forage
-# 1) Lower slope percentage
-# 2) High  winter forage species
+# 1) Available moose winter forage
+# 2) Lower slope percentage
 # 3) More mature structural stage
-# 4)So on
+# 4) Stand type, crown closure, and forage height
 
-# 1.Slope
-PlotMoose_winterforage <- merge(line, PlotShrubCov)
+# 1. Available moose winter forage
+# > 40% = 1, >20-40% = 2, >10-20% = 3, 5-10% = 4, <5% = 5
+MooseWinterBrowseSpecies <- c("AMELALN","ROSAACI","SALISPP","VIBUEDU","PAXIMYR","CORNSTO", "SORBSIT","SORBSCO","RIBESP",
+                              "RIBELAC","RIBEHUD","RIBELAX", "RIBETRI","RIBEGLA","AC","AT","BL","EP","BETUGLA_VAR_GLA") #check species
+PlotMoose_winterforage <- dcast(PlotShrubCov[Species %in% MooseWinterBrowseSpecies], PlotID ~ paste0(Species, "_PerCov"),
+  value.var = "PerCov", fill = 0)
+PlotMoose_winterforage[, MooseWinterBrowsePerCov := rowSums(.SD),
+                       .SDcols = patterns("_PerCov$")]
+PlotMoose_winterforage[, MVForageSuit := ifelse(MooseWinterBrowsePerCov > 40, 1, ifelse(MooseWinterBrowsePerCov > 20, 2, 
+                                        ifelse(MooseWinterBrowsePerCov > 10, 3, ifelse(MooseWinterBrowsePerCov >= 5, 4, 5))))]
+# 2. Slope <40%
+PlotMoose_winterforage <- merge(PlotMoose_winterforage, FR_treatments[,.(PlotID, Planted,  Aspect, CumBurnSevCat, elevation, CrownClos_per, TimeSinceFire, Slope_PC)])
+PlotMoose_winterforage[, SlopeSuit := MVForageSuit]
+PlotMoose_winterforage[, SlopeSuit := ifelse(Slope_PC >= 40 & Slope_PC <= 60 & SlopeSuit %in% c(1, 2, 3),SlopeSuit + 1,
+                                      ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
+                                      ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit)))] #check to make sure
+
+# Structural Stage 
+
+# Moose - winter cover
+# logistic function replicating Kelly & Hodges 2020
+PlotMoose_wintercover <- merge(plot_treatments, PlotTree[DBH_bin >= 20, .(SPH = sum(SPH)), by=PlotID], 
+                                all.x = TRUE) # copied from squirrel, need to check
+PlotMoose_wintercover[is.na(SPH), SPH := 0]
+PlotMoose_wintercover[, SPH := 1.8/(1+exp(-0.005*SPH))-0.9]# copied from squirrel, DOES THIS MAKE SENSE FOR MOOSE?
+# 2. Tree composition at least 60% conifer
+treeComp <- PlotTree[DBH_bin >=10, totalSPH := sum(SPH), by=c("PlotID")]
+treeComp <- treeComp[DBH_bin >=10, .(spComp=sum(SPH)/totalSPH), by=c("PlotID", "Species")]
+treeComp <- unique(treeComp)
+PlotMoose_wintercover <- merge(PlotMoose_wintercover, treeComp[Species %in% c("Sx", "Pl", "Bl","UC","Lw","Fd"), 
+                                                                 .(conComp=sum(spComp)), by=PlotID], all.x=TRUE)
+PlotMoose_wintercover[, conComp := ifelse(conComp > 0.6, 1, 0)][is.na(conComp), conComp := 0] # tree composition >60% conifer = 1, else 0
 
 #-- ALL SPECIES 
 HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
