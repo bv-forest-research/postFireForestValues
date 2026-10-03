@@ -393,7 +393,7 @@ PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by
 
 # 1. Available moose winter forage
 # > 40% = 1, >20-40% = 2, >10-20% = 3, 5-10% = 4, <5% = 5
-MooseWinterBrowseSpecies <- c("AC", "AMELALN", "AT", "BETUGLA_VAR_GLA", "BL", "CORNSTO","EP", "PAXIMYR", "RIBESP", "RIBEGLA", 
+MooseWinterBrowseSpecies <- c("AC", "AMELALN", "AT", "BETUGLA_VAR_GLA", "BL", "CORNSTO", "PAXIMYR", "RIBESP", "RIBEGLA", 
                               "RIBEHUD", "RIBELAC","RIBELAX", "RIBETRI", "ROSAACI", "SALISPP", "SORBSCO", "SORBSIT", "VIBUEDU") #check species
 #PlotMoose_winterforage <- dcast(PlotShrubCov[Species %in% MooseWinterBrowseSpecies], PlotID ~ paste0(Species, "_PerCov"), value.var = "PerCov", fill = 0)
 #PlotMoose_winterforage[, MooseWinterBrowsePerCov := rowSums(.SD),.SDcols = patterns("_PerCov$")]
@@ -456,7 +456,7 @@ PlotMoose_winterforage[, STSuit := SSSuit]
 PlotMoose_winterforage[, STSuit := ifelse(StandType == "B" & MeanFoliageHeight < 50 & STSuit %in% 1:3, STSuit + 2,
   ifelse(StandType %in% c("C", "M") & CrownClos_per <= 40 & MeanFoliageHeight < 50 & STSuit %in% 1:3, STSuit + 1, STSuit))]
 
-# Moose - winter cover
+# Moose - winter cover ------
 # 1) Structural stage
 # 2) Lower slope percentage
 # 3) Crown closure
@@ -500,6 +500,23 @@ PlotMoose_wintercover[, STSuit := ifelse(StandType == "B" & STSuit %in% 1:3, 4,
   ifelse(StandType == "B" & STSuit == 4, 5,
     ifelse(StandType == "M" & STSuit %in% 1:3, STSuit + 1, STSuit)))]
 
+# Moose - growing forage--------
+# 1) Available moose growing forage
+# 2) Lower slope percentage
+
+# 1. Available moose growing forage
+# > 40% = 1, >20-40% = 2, >10-20% = 3, 5-10% = 4, <5% = 5
+MooseGrowingBrowseSpecies <- c("AC", "AMELALN", "AT", "BETUGLA_VAR_GLA", "BL", "CORNSTO","EP", "PAXIMYR", "RIBESP", "RIBEGLA", 
+                              "RIBEHUD", "RIBELAC","RIBELAX", "RIBETRI", "ROSAACI", "SALISPP", "SORBSCO", "SORBSIT", "VIBUEDU" ) #check species
+PlotMoose_growingforage <- PlotShrubCov[Species %in% MooseGrowingBrowseSpecies,.(MooseGrowingBrowsePerCov = sum(PerCov)), by = PlotID]
+PlotMoose_growingforage[, MGForageSuit := ifelse(MooseGrowingBrowsePerCov > 40, 1, ifelse(MooseGrowingBrowsePerCov > 20, 2, 
+                                                                                        ifelse(MooseGrowingBrowsePerCov > 10, 3, ifelse(MooseGrowingBrowsePerCov >= 5, 4, 5))))]
+
+# 2. Slope <40%
+PlotMoose_growingforage <- merge(PlotMoose_growingforage, PlotMoose_winterforage[,.(PlotID, Slope_PC)])
+PlotMoose_growingforage[, SlopeSuit := MGForageSuit]
+PlotMoose_growingforage[, SlopeSuit := ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
+                                                    ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))] #check to make sure
 #-- ALL SPECIES 
 HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotFisher, ("FisherHabitat") := mget("FisherHabitat"), on = "PlotID"]
