@@ -437,7 +437,7 @@ PlotMoose_winterforage <- merge(PlotMoose_winterforage, PlotMoose_data)
 PlotMoose_winterforage[, SlopeSuit := MWForageSuit]
 PlotMoose_winterforage[, SlopeSuit := ifelse(Slope_PC >= 40 & Slope_PC <= 60 & SlopeSuit %in% c(1, 2, 3),SlopeSuit + 1,
                                       ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
-                                      ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit)))] #check to make sure
+                                      ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit)))] 
 setcolorder(PlotMoose_winterforage,c(names(PlotMoose_winterforage)[!names(PlotMoose_winterforage) %in% 
                                   c("MWForageSuit","SlopeSuit")],"MWForageSuit", "SlopeSuit"))
 
@@ -526,7 +526,7 @@ PlotMoose_growingforage[, MGForageSuit := ifelse(MooseGrowingBrowsePerCov > 40, 
 PlotMoose_growingforage <- merge(PlotMoose_growingforage, PlotMoose_data[,.(PlotID, Slope_PC)])
 PlotMoose_growingforage[, SlopeSuit := MGForageSuit]
 PlotMoose_growingforage[, SlopeSuit := ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
-                                                    ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))] #check to make sure
+                                                    ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))] 
 
 # Moose - growing cover ------
 # 1) Structural stage
@@ -545,7 +545,7 @@ PlotMoose_growingcover[, SSSuit := ifelse(StructStage %in% c("3b","4","5","6","7
 # 60-100% then 1 or 2 = 3, 3 = 4
 PlotMoose_growingcover[, SlopeSuit := SSSuit]
 PlotMoose_growingcover[, SlopeSuit := ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
-                                                   ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))] #check
+                                                   ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))]
 
 # 3. Aspect
 # if slope >10% and has aspect 135-225 then 1,2,3 = +1
