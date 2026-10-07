@@ -57,6 +57,8 @@ ShrubVolume <- fread(file.path(in_dir,"FR_shrubVolumes.csv"))
 # scale function
 scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 
+structstage <- fread(file.path(in_dir,"FireRehab_structural_stage.csv"))
+
 
 # Plot attributes ----------------------------------------------------------------------------------
 # CWD quality
@@ -385,9 +387,9 @@ PlotGrizzly[is.na(PlotGrizzly)] <- 0
 PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by = PlotID]
 
 #-- MOOSE-----------------------------------------------------------------------------------
-PlotMoose_data <- FR_treatments[,.(PlotID, Planted,  Aspect, CumBurnSevCat, elevation, CrownClos_per, TimeSinceFire, Slope_PC)] # moose specific data
-PlotMoose_data[, StructStage := rep(
-  c("1a", "1b", "2a", "2b", "2c", "2d", "3a", "3b", "4", "5", "6", "7"),  length.out = .N)] # TEMPORARY check, will need to figure out from photos
+PlotMoose_data <- merge(FR_treatments[, .(PlotID, Planted, Aspect, CumBurnSevCat, elevation, TimeSinceFire, Slope_PC)],
+  structstage, by = "PlotID",  all.x = TRUE)
+PlotMoose_data <- merge(PlotMoose_data, PlotCrown, by = "PlotID", all.x = TRUE)
 
 # logistic function replicating Kelly & Hodges 2020
 # Conifer - Greater than 3/4 of total tree layer cover is coniferous
@@ -447,10 +449,10 @@ setcolorder(PlotMoose_winterforage,c(names(PlotMoose_winterforage)[!names(PlotMo
 AvgFoliageHeight <- shrubDat[Species %in% MooseWinterBrowseSpecies,.(MeanFoliageHeight = mean(Foliage_Height, na.rm = TRUE)),by = .(PlotID)]
 PlotMoose_winterforage <- merge(PlotMoose_winterforage, AvgFoliageHeight, by = "PlotID", all.x = TRUE)
 
-PlotMoose_winterforage[, SSSuit := ifelse(StructStage %in% c("2a", "2b", "2c", "2d"),
+PlotMoose_winterforage[, SSSuit := ifelse(structural_stage %in% c("2a", "2b", "2c", "2d"),
   ifelse(SlopeSuit %in% c(1, 2), 4,
          ifelse(SlopeSuit == 4, 5, SlopeSuit)),
-  ifelse(StructStage == "3a" & MeanFoliageHeight < 50,
+  ifelse(structural_stage == "3a" & MeanFoliageHeight < 50,
     ifelse(SlopeSuit %in% 1:3, SlopeSuit + 2,
            ifelse(SlopeSuit == 4, 5, SlopeSuit)), SlopeSuit))]
 setcolorder(PlotMoose_winterforage,c(names(PlotMoose_winterforage)[!names(PlotMoose_winterforage) %in% 
@@ -461,7 +463,7 @@ setcolorder(PlotMoose_winterforage,c(names(PlotMoose_winterforage)[!names(PlotMo
 # if stand type is conifer OR mixed AND crown closure is <= 40% AND average height of browse is < 50 cm, then is 1, 2, or 3, +1
 PlotMoose_winterforage[, STSuit := SSSuit]
 PlotMoose_winterforage[, STSuit := ifelse(StandType == "B" & MeanFoliageHeight < 50 & STSuit %in% 1:3, STSuit + 2,
-  ifelse(StandType %in% c("C", "M") & CrownClos_per <= 40 & MeanFoliageHeight < 50 & STSuit %in% 1:3, STSuit + 1, STSuit))]
+  ifelse(StandType %in% c("C", "M") & CrownClos <= 40 & MeanFoliageHeight < 50 & STSuit %in% 1:3, STSuit + 1, STSuit))]
 
 PlotMoose_winterforage[, MWFSuit := STSuit]
 
@@ -474,10 +476,10 @@ PlotMoose_winterforage[, MWFSuit := STSuit]
 # 1. Structural stage
 # Structural Stage 6 or 7 = 1, 5 = 3, 4 = 4, 3b = 5
 PlotMoose_wintercover <- copy(PlotMoose_data)
-PlotMoose_wintercover[, SSSuit := ifelse(StructStage %in% c("6", "7"), 1,
-                                         ifelse(StructStage == "5", 3,
-                                                ifelse(StructStage == "4", 4,
-                                                       ifelse(StructStage == "3b", 5, NA_real_))))]
+PlotMoose_wintercover[, SSSuit := ifelse(structural_stage %in% c("6", "7"), 1,
+                                         ifelse(structural_stage == "5", 3,
+                                                ifelse(structural_stage == "4", 4,
+                                                       ifelse(structural_stage == "3b", 5, NA_real_))))]
 
 # 2. Lower slope percentage
 # 40-60% then 1 or 3 = +1
@@ -495,11 +497,11 @@ PlotMoose_wintercover[, SlopeSuit := ifelse(Slope_PC >= 40 & Slope_PC <= 60 & Sl
 # if Crown closure 26 - <=40% (M), if CrownSuit 1 or 2 = 3, 3 = 4, 4 = 5
 # if Crown closure <=25% (VL-L), if CrownSuit 1 or 2 = 4, 3 or 4 = 5
 PlotMoose_wintercover[, CrownSuit := SlopeSuit]
-PlotMoose_wintercover[, CrownSuit := ifelse(CrownClos_per > 25 & CrownClos_per <= 40,
+PlotMoose_wintercover[, CrownSuit := ifelse(CrownClos > 25 & CrownClos <= 40,
   ifelse(CrownSuit %in% c(1, 2), 3,
          ifelse(CrownSuit == 3, 4,
                 ifelse(CrownSuit == 4, 5, CrownSuit))),
-  ifelse(CrownClos_per <= 25,
+  ifelse(CrownClos <= 25,
     ifelse(CrownSuit %in% c(1, 2), 4,
            ifelse(CrownSuit %in% c(3, 4), 5, CrownSuit)), CrownSuit))]
 
@@ -544,8 +546,8 @@ PlotMoose_growingforage[, MGFSuit := SlopeSuit]
 # 1. Structural stage
 # Structural Stage 3b-7 = 1, 3a = 3
 PlotMoose_growingcover <- copy(PlotMoose_data)
-PlotMoose_growingcover[, SSSuit := ifelse(StructStage %in% c("3b","4","5","6","7"), 1,
-                                         ifelse(StructStage == "3a", 3, NA_real_))]
+PlotMoose_growingcover[, SSSuit := ifelse(structural_stage %in% c("3b","4","5","6","7"), 1,
+                                         ifelse(structural_stage == "3a", 3, NA_real_))]
 
 # 2. Lower slope percentage
 # 60-100% then 1 or 2 = 3, 3 = 4
@@ -566,7 +568,7 @@ PlotMoose_growingcover[, AspectSuit := ifelse(Slope_PC > 10 & Aspect >= 135 & As
 # >60% = VH
 # if Crown closure <=25% (VL-L), if CrownSuit 1 or 2 = 3, 3 = 4
 PlotMoose_growingcover[, CrownSuit := AspectSuit]
-PlotMoose_growingcover[, CrownSuit := ifelse(CrownClos_per <= 25,
+PlotMoose_growingcover[, CrownSuit := ifelse(CrownClos <= 25,
                                             ifelse(CrownSuit %in% c(1, 2), 3,
                                                    ifelse(CrownSuit == 3, 4, CrownSuit)),CrownSuit)]
 
