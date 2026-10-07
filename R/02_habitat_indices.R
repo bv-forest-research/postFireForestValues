@@ -521,7 +521,6 @@ PlotMoose_growingforage <- PlotShrubCov[Species %in% MooseGrowingBrowseSpecies,.
 PlotMoose_growingforage[, MGForageSuit := ifelse(MooseGrowingBrowsePerCov > 40, 1, ifelse(MooseGrowingBrowsePerCov > 20, 2, 
                                                                                         ifelse(MooseGrowingBrowsePerCov > 10, 3, ifelse(MooseGrowingBrowsePerCov >= 5, 4, 5))))]
 
-<<<<<<< HEAD
 # 2. Lower slope percentage
 # 60-100% then 1, 2 = 3, 3 = 4
 PlotMoose_growingforage <- merge(PlotMoose_growingforage, PlotMoose_data[,.(PlotID, Slope_PC)])
@@ -571,13 +570,11 @@ PlotMoose_growingcover[, STSuit := CrownSuit]
 PlotMoose_growingcover[, STSuit := ifelse(StandType == "B" & STSuit %in% 1:2, 3,
                                          ifelse(StandType == "B" & STSuit == 3, 4,STSuit))]
 
-=======
 # 2. Slope <40%
 PlotMoose_growingforage <- merge(PlotMoose_growingforage, PlotMoose_winterforage[,.(PlotID, Slope_PC)])
 PlotMoose_growingforage[, SlopeSuit := MGForageSuit]
 PlotMoose_growingforage[, SlopeSuit := ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
                                                     ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))] #check to make sure
->>>>>>> e037ddd9fa2bd244776d79a4a03e5e4c220e6415
 #-- ALL SPECIES 
 HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotFisher, ("FisherHabitat") := mget("FisherHabitat"), on = "PlotID"]
