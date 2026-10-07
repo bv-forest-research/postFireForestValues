@@ -588,7 +588,7 @@ HabitatIndices <- HabitatIndices[PlotGrouse, ("GrouseHabitat") := mget("GrouseHa
 HabitatIndices <- HabitatIndices[PlotGrizzly, ("GrizzlyHabitat") := mget("GrizzlyHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotMoose_winterforage, ("MooseWinterForageHabitat") := mget("MWFSuit"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotMoose_wintercover, ("MooseWinterCoverHabitat") := mget("MWCSuit"), on = "PlotID"]
-HabitatIndices <- HabitatIndices[PlotMoose_growingforage, ("MooseGrowingForageHabitat") := mget("GWFSuit"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotMoose_growingforage, ("MooseGrowingForageHabitat") := mget("MGFSuit"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotMoose_growingcover, ("MooseGrowingCoverHabitat") := mget("MGCSuit"), on = "PlotID"]
 
 
