@@ -463,6 +463,8 @@ PlotMoose_winterforage[, STSuit := SSSuit]
 PlotMoose_winterforage[, STSuit := ifelse(StandType == "B" & MeanFoliageHeight < 50 & STSuit %in% 1:3, STSuit + 2,
   ifelse(StandType %in% c("C", "M") & CrownClos_per <= 40 & MeanFoliageHeight < 50 & STSuit %in% 1:3, STSuit + 1, STSuit))]
 
+PlotMoose_winterforage[, MWFSuit := STSuit]
+
 # Moose - winter cover ------
 # 1) Structural stage
 # 2) Lower slope percentage
@@ -509,6 +511,8 @@ PlotMoose_wintercover[, STSuit := ifelse(StandType == "B" & STSuit %in% 1:3, 4,
   ifelse(StandType == "B" & STSuit == 4, 5,
     ifelse(StandType == "M" & STSuit %in% 1:3, STSuit + 1, STSuit)))]
 
+PlotMoose_wintercover[, MWCSuit := STSuit]
+
 # Moose - growing forage--------
 # 1) Available moose growing forage
 # 2) Lower slope percentage
@@ -527,6 +531,8 @@ PlotMoose_growingforage <- merge(PlotMoose_growingforage, PlotMoose_data[,.(Plot
 PlotMoose_growingforage[, SlopeSuit := MGForageSuit]
 PlotMoose_growingforage[, SlopeSuit := ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
                                                     ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))] 
+
+PlotMoose_growingforage[, MGFSuit := SlopeSuit]
 
 # Moose - growing cover ------
 # 1) Structural stage
@@ -569,12 +575,8 @@ PlotMoose_growingcover[, CrownSuit := ifelse(CrownClos_per <= 25,
 PlotMoose_growingcover[, STSuit := CrownSuit]
 PlotMoose_growingcover[, STSuit := ifelse(StandType == "B" & STSuit %in% 1:2, 3,
                                          ifelse(StandType == "B" & STSuit == 3, 4,STSuit))]
+PlotMoose_growingcover[, MGCSuit := STSuit]
 
-# 2. Slope <40%
-PlotMoose_growingforage <- merge(PlotMoose_growingforage, PlotMoose_winterforage[,.(PlotID, Slope_PC)])
-PlotMoose_growingforage[, SlopeSuit := MGForageSuit]
-PlotMoose_growingforage[, SlopeSuit := ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
-                                                    ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))] #check to make sure
 #-- ALL SPECIES 
 HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotFisher, ("FisherHabitat") := mget("FisherHabitat"), on = "PlotID"]
@@ -584,6 +586,11 @@ HabitatIndices <- HabitatIndices[PlotSquirrel, ("SquirrelHabitat") := mget("Squi
 HabitatIndices <- HabitatIndices[PlotSmMammal, ("SmMammalHabitat") := mget("SmMammalHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotGrouse, ("GrouseHabitat") := mget("GrouseHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotGrizzly, ("GrizzlyHabitat") := mget("GrizzlyHabitat"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotMoose_winterforage, ("MooseWinterForageHabitat") := mget("MWFSuit"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotMoose_wintercover, ("MooseWinterCoverHabitat") := mget("MWCSuit"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotMoose_growingforage, ("MooseGrowingForageHabitat") := mget("GWFSuit"), on = "PlotID"]
+HabitatIndices <- HabitatIndices[PlotMoose_growingcover, ("MooseGrowingCoverHabitat") := mget("MGCSuit"), on = "PlotID"]
+
 
 # export 
 write.csv(HabitatIndices, file.path(out_dir,"hab_ind.csv"), row.names = FALSE)
