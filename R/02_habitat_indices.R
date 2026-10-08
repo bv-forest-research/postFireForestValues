@@ -398,7 +398,7 @@ PlotMoose_data <- merge(PlotMoose_data, PlotCrown, by = "PlotID", all.x = TRUE)
 # Mixed - Neither coniferous or broadleaf account for > 75% of total tree layer cover
 PlotMoose_data <- merge(PlotMoose_data, PlotTree[DBH_bin > 12.5, .(SPH = sum(SPH)), by=PlotID], 
                                 all.x = TRUE) # copied from squirrel, need to check
-PlotMoose_data[is.na(SPH), SPH := 0]
+PlotMoose_data[is.na(SPH), SPH := 0] # check, do we want NAs to = 0?
 PlotMoose_data[, SPH := 1.8/(1+exp(-0.005*SPH))-0.9]# copied from squirrel, DOES THIS MAKE SENSE FOR MOOSE?
 treeComp <- copy(PlotTree)
 treeComp[DBH_bin >12.5, totalSPH := sum(SPH), by=c("PlotID")]
@@ -411,13 +411,16 @@ PlotMoose_data <- merge(PlotMoose_data, treeComp[, .(conComp = sum(spComp[Specie
 PlotMoose_data[, StandType := fifelse(fcoalesce(conComp, 0) > 0.75, "C",
                                               fifelse(fcoalesce(broadComp, 0) > 0.75, "B", "M"))][, c("conComp", "broadComp") := NULL]
 
-shrubDat <- ShrubVolume #check, running function from ForageVolumeFunctions.R # clean shrub data
+shrubDat <- ShrubVolume # clean shrub data
 shrubDat[, Species := toupper(Species)]
 shrubDat[, Species := sub("_", "", Species)]
 shrubDat <- shrubDat[!(Species %in% c("PYROSP", "ASTECON"))]
 shrubDat[grepl("SALI", Species), Species := "SALISPP"]
 
-# Moose - winter forage --------
+# Moose - winter forage -------- 
+      # may need to reorder to account for these rating rules from SKWERM 
+      # Suitabilty of 6 if Slope > 100% OR winter browse % = 0 OR elevation > 1500 m OR structural stage = 1
+
 # 1) Available moose winter forage
 # 2) Lower slope percentage
 # 3) More mature structural stage
@@ -428,7 +431,7 @@ MooseWinterBrowseSpecies <- c("AC", "AMELALN", "AT", "BETUGLA_VAR_GLA", "BL", "C
                                                            "RIBEHUD", "RIBELAC","RIBELAX", "RIBETRI", "ROSAACI", "SALISPP", "SORBSCO", "SORBSIT", "VIBUEDU") #check species
 MooseWinterBrowse <- PlotShrubCov[Species %in% MooseWinterBrowseSpecies,.(MooseWinterBrowsePerCov = sum(PerCov)),by = PlotID]
 PlotMoose_winterforage <- merge(PlotMoose_data, MooseWinterBrowse, by = "PlotID", all.x = TRUE)
-PlotMoose_winterforage[is.na(MooseWinterBrowsePerCov), MooseWinterBrowsePerCov := 0]
+PlotMoose_winterforage[is.na(MooseWinterBrowsePerCov), MooseWinterBrowsePerCov := 0] # check, do we want NAs to = 0?
 PlotMoose_winterforage[, MWForageSuit := ifelse(MooseWinterBrowsePerCov == 0,6,
                                                 ifelse(MooseWinterBrowsePerCov > 40, 1, 
                                                        ifelse(MooseWinterBrowsePerCov > 20, 2,
@@ -472,6 +475,9 @@ PlotMoose_winterforage[, STSuit := ifelse(StandType == "B" & MeanFoliageHeight <
 PlotMoose_winterforage[, MWFSuit := STSuit]
 
 # Moose - winter cover ------
+      # may need to reorder to account for these rating rules from SKWERM 
+      # Suitabilty of 6 if Slope > 100%  OR elevation > 1500 m OR structural stage <= 3a
+
 # 1) Structural stage
 # 2) Lower slope percentage
 # 3) Crown closure
@@ -524,6 +530,9 @@ PlotMoose_wintercover[, STSuit := ifelse(StandType == "B" & STSuit %in% 1:3, 4,
 PlotMoose_wintercover[, MWCSuit := STSuit]
 
 # Moose - growing forage--------
+      # may need to reorder to account for these rating rules from SKWERM 
+      # Suitabilty of 6 if Slope > 100% OR winter browse % = 0
+
 # 1) Available moose growing forage
 # 2) Lower slope percentage
 
@@ -533,7 +542,7 @@ MooseGrowingBrowseSpecies <- c("AC", "AMELALN", "AT", "BETUGLA_VAR_GLA", "BL", "
                               "RIBEHUD", "RIBELAC","RIBELAX", "RIBETRI", "ROSAACI", "SALISPP", "SORBSCO", "SORBSIT", "VIBUEDU" ) #check species
 MooseGrowingBrowse <- PlotShrubCov[Species %in% MooseGrowingBrowseSpecies,.(MooseGrowingBrowsePerCov = sum(PerCov)),by = PlotID]
 PlotMoose_growingforage <- merge(PlotMoose_data, MooseGrowingBrowse, by = "PlotID", all.x = TRUE)
-PlotMoose_growingforage[is.na(MooseGrowingBrowsePerCov), MooseGrowingBrowsePerCov := 0]
+PlotMoose_growingforage[is.na(MooseGrowingBrowsePerCov), MooseGrowingBrowsePerCov := 0] #check, do we want NAs to = 0?
 PlotMoose_growingforage[, MGForageSuit := ifelse(MooseGrowingBrowsePerCov == 0, 6,
                                                  ifelse(MooseGrowingBrowsePerCov > 40, 1,
                                                         ifelse(MooseGrowingBrowsePerCov > 20, 2,
@@ -550,6 +559,9 @@ PlotMoose_growingforage[, SlopeSuit := ifelse(Slope_PC>100,6,
 PlotMoose_growingforage[, MGFSuit := SlopeSuit]
 
 # Moose - growing cover ------
+    # may need to reorder to account for these rating rules from SKWERM 
+    # Suitabilty of 6 if Slope > 100% OR structural stage <= 2
+
 # 1) Structural stage
 # 2) Lower slope percentage
 # 3) Aspect
