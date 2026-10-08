@@ -15,25 +15,51 @@ ShrubSpCov <- function(shrubDat){
   shrubDat$Species <- toupper(shrubDat$Species)
   # remove underscore
   shrubDat$Species <- sub("_", "", shrubDat$Species)
-  #remove Pyro sp., ASTECON (not a shrub, not consistently sampled)
+  # remove Pyro sp., ASTECON (not a shrub, not consistently sampled)
   shrubDat <- shrubDat[!(Species %in% c("PYROSP", "ASTECON"))]
   
   #-- Calculate percent cover
   # A1 plot = 5.64m radius = 100m2, c1/C2/C3/C4 = 3.99m radius = 50m2
   # Account for the sub-sampling of some plots
   shrubDat[, AreaSearchM2 := ifelse(SubPlot == "A1", 100, 50)]
+  
   # convert from cm2 to m2, / by subplot area, X100 = percent cover
   shrubDat[, PerCov := (((Diam1*Diam2)*0.0001)/AreaSearchM2)*100]
   
   # Account for sub-sampling of species
   # Some sub-samples didn't need to be sub-sampled i.e. have 10/10 sampled
   shrubDat[Total_Number == 10, Total_Number := NA]
-  shrubDat[, PerCov := ifelse(!is.na(Total_Number), mean(PerCov)*Total_Number, sum(PerCov)), by = .(PlotID, SubPlot, Species)]
-  # Now that the species sub-plots have been calculated only keep one of the rows to represent the perCov
-  shrubDat <- shrubDat[!is.na(Total_Number), unique(shrubDat, by = c("PlotID", "SubPlot", "Species", "Total_Number"))]
   
-  # Combine salix species and calculate total percent cover per plot per species
-  PlotShrubCov <- shrubDat[grepl("SALI", Species), Species := "SALISPP"][, .(PerCov = sum(PerCov)), by = .(PlotID, Species)]
+  # Calculate adjusted percent cover and average foliage height
+  shrubDat[, `:=`(
+    PerCov = ifelse(
+      !is.na(Total_Number),
+      mean(PerCov) * Total_Number,
+      sum(PerCov)
+    ),
+    HeightAvg = mean(Foliage_Height, na.rm = TRUE)
+  ), by = .(PlotID, SubPlot, Species)]
+  
+  # Now that the species sub-plots have been calculated
+  # only keep one row to represent the PerCov and HeightAvg
+  shrubDat <- shrubDat[
+    !is.na(Total_Number),
+    unique(shrubDat, by = c("PlotID", "SubPlot", "Species", "Total_Number"))
+  ]
+  
+  # Combine salix species and calculate total percent cover
+  # and average foliage height per plot per species
+  PlotShrubCov <- shrubDat[
+    grepl("SALI", Species),
+    Species := "SALISPP"
+  ][
+    ,
+    .(
+      PerCov = sum(PerCov),
+      HeightAvg = mean(HeightAvg, na.rm = TRUE)
+    ),
+    by = .(PlotID, Species)
+  ]
   
   return(PlotShrubCov)
 }
