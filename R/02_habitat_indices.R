@@ -7,7 +7,6 @@
 # Nikki Beaudoin (moose, elk, deer)
 # Dec 12, 2023
 
-# test commit
 
 # Load libraries
 library(data.table)
@@ -15,25 +14,18 @@ library(tidyverse)
 library(ggpubr)
 
 
-in_dir <- "01_data_inputs"
-out_dir <- "02_prepped_values"
+in_dir <- "01-data_inputs"
+out_dir <- "02-prepped_values"
 
 files_to_source <- list.files("./R/00-utils/", pattern = "Function", 
                               full.names = TRUE)
 sapply(files_to_source, source)
 
-# Treatments  ---------------------------------------------------------------
+#-- Load data-------------------------------------------------------------------
+# Plot/treatment data:
 FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
 setnames(FR_treatments, "ID", "PlotID")
 
-#Plot treatment cleaning
-FR_treatments[, `:=`(PlotID = factor(PlotID), Planted = factor(Planted),TimeSinceFire = 2020 - FIRE_YEAR)]
-#for this paper, we don't need all the columns:
-plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire)]
-
-
-
-# Plot data ----------------------------------------------------------------
 #Tree data:
 A1trees <- fread(file.path(in_dir,"A1trees.csv"))
 B1trees <- fread(file.path(in_dir,"B1trees.csv"))
@@ -53,14 +45,20 @@ densiometer <- fread(file.path(in_dir,"FRdensiometer.csv"))
 Cover <- fread(file.path(in_dir,"FRstrataCover.csv")) #B1= <2m and B2=2-10m shrub heights)
 setnames(Cover, c("Total_B1", "Total_B2"), c("ShrubsB1", "ShrubsB2"))
 ShrubVolume <- fread(file.path(in_dir,"FR_shrubVolumes.csv"))
+structstage <- fread(file.path(in_dir,"FireRehab_structural_stage.csv"))
 
 # scale function
 scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 
-structstage <- fread(file.path(in_dir,"FireRehab_structural_stage.csv"))
+# Cleaning (small)
+#Plot treatment cleaning
+FR_treatments[, `:=`(PlotID = factor(PlotID), Planted = factor(Planted),TimeSinceFire = 2020 - FIRE_YEAR)]
+#for this paper, we don't need all the columns:
+plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire, CumBurnSev)]
 
 
-# Plot attributes ----------------------------------------------------------------------------------
+# Calculate plot attributes ----------------------------------------------------------------------------------
+# These attributes are metrics that will be used in one or many of the habitat indices
 # CWD quality
 PlotCQI <- cwdQI(cwd)
 PlotCQI[, CQI:=round(CQI*0.01, digit=2)] #values between 0-1; 0=bad 1=best
@@ -93,7 +91,23 @@ PlotTree <- TreeDensity(A1trees, B1trees, ClassSize = 2)
 # dead
 PlotSnags <- SnagDensity(A1trees, B1trees)
 
-# Individual shrub species percent cover (calculated from their volumes)
+# Tree composition
+treeComp <- PlotTree[DBH_bin >=12, totalSPH := sum(SPH), by=c("PlotID")] # add detail as to why the cut off (I think because it's targetting the large trees)
+treeComp <- treeComp[DBH_bin >=12, .(spComp=sum(SPH)/totalSPH), by=c("PlotID", "Species")]
+treeComp <- unique(treeComp)
+
+# Stand type
+# Classify stand type - which is based on tree species composition
+# Conifer (c) - Greater than 3/4 of total tree layer cover is coniferous
+# Broadleaf (B) - Greater than 3/4 of total tree layer cover is broadleaf
+# Mixed (M) - Neither coniferous or broadleaf account for > 75% of total tree layer cover
+standType <- treeComp[, .(conComp = sum(spComp[Species %in% c("Sx", "Pl", "Bl", "UC", "Lw", "Fd")]),
+                          broadComp = sum(spComp[Species %in% c("Ac", "At", "Ep")])), by = PlotID]
+standType[, StandType := fifelse(fcoalesce(conComp, 0) > 0.75, "C",
+                                 fifelse(fcoalesce(broadComp, 0) > 0.75, "B", "M"))]
+
+
+# Individual shrub species percent cover (calculated from their volumes) and average height
 PlotShrubCov <- ShrubSpCov(ShrubVolume)
 # % cover of huckleberry berries
 PlotHuckberry <- Huckberry(PlotShrubCov, PlotCrown)
@@ -275,9 +289,6 @@ PlotSquirrel[is.na(SPH), SPH := 0]
 PlotSquirrel[, SPH := 1.8/(1+exp(-0.005*SPH))-0.9]
 
 # 2. Tree composition at least 50% conifer
-treeComp <- PlotTree[DBH_bin >=10, totalSPH := sum(SPH), by=c("PlotID")]
-treeComp <- treeComp[DBH_bin >=10, .(spComp=sum(SPH)/totalSPH), by=c("PlotID", "Species")]
-treeComp <- unique(treeComp)
 PlotSquirrel <- merge(PlotSquirrel, treeComp[Species %in% c("Sx", "Pl", "Bl"), 
                                              .(conComp=sum(spComp)), by=PlotID], all.x=TRUE)
 PlotSquirrel[, conComp := ifelse(conComp >= 0.5, 1, 0)][is.na(conComp), conComp := 0] # tree composition >=50% conifer = 1, else 0
@@ -386,73 +397,65 @@ PlotGrizzly[is.na(PlotGrizzly)] <- 0
 # GRIZZLY BEAR HABITAT INDEX
 PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by = PlotID]
 
-#-- MOOSE-----------------------------------------------------------------------------------
+#-- MOOSE ----------------------------------------------------------------------
+# 4 different indices: winter forage, winter cover, growing forage, growing cover
+
+# Create base metrics for moose indices. Indices are based on SkWerm habitat suitability protocols 
+# All/most indices require elevation, slope, structural stage, stand type
 PlotMoose_data <- merge(FR_treatments[, .(PlotID, Planted, Aspect, CumBurnSevCat, elevation, TimeSinceFire, Slope_PC)],
   structstage, by = "PlotID",  all.x = TRUE)
 # NOTE # missing structural stage in FR01 and FR02
 PlotMoose_data <- merge(PlotMoose_data, PlotCrown, by = "PlotID", all.x = TRUE)
+PlotMoose_data <- merge(PlotMoose_data, standType, by = "PlotID", all.x = TRUE)
 
-# logistic function replicating Kelly & Hodges 2020
-# Conifer - Greater than 3/4 of total tree layer cover is coniferous
-# Broadleaf - Greater than 3/4 of total tree layer cover is broadleaf
-# Mixed - Neither coniferous or broadleaf account for > 75% of total tree layer cover
-PlotMoose_data <- merge(PlotMoose_data, PlotTree[DBH_bin > 12.5, .(SPH = sum(SPH)), by=PlotID], 
-                                all.x = TRUE) # copied from squirrel, need to check
-PlotMoose_data[is.na(SPH), SPH := 0] # check, do we want NAs to = 0?
-PlotMoose_data[, SPH := 1.8/(1+exp(-0.005*SPH))-0.9]# copied from squirrel, DOES THIS MAKE SENSE FOR MOOSE?
-treeComp <- copy(PlotTree)
-treeComp[DBH_bin >12.5, totalSPH := sum(SPH), by=c("PlotID")]
-treeComp <- treeComp[DBH_bin >12.5, .(spComp=sum(SPH)/totalSPH), by=c("PlotID", "Species")]
-treeComp <- unique(treeComp)
-# Tree composition
-PlotMoose_data <- merge(PlotMoose_data, treeComp[, .(conComp = sum(spComp[Species %in% c("Sx", "Pl", "Bl", "UC", "Lw", "Fd")]),
-                                                                     broadComp = sum(spComp[Species %in% c("Ac", "At", "Ep")])), by = PlotID], all.x = TRUE)
-# Classify composition
-PlotMoose_data[, StandType := fifelse(fcoalesce(conComp, 0) > 0.75, "C",
-                                              fifelse(fcoalesce(broadComp, 0) > 0.75, "B", "M"))][, c("conComp", "broadComp") := NULL]
-
-shrubDat <- ShrubVolume # clean shrub data
-shrubDat[, Species := toupper(Species)]
-shrubDat[, Species := sub("_", "", Species)]
-shrubDat <- shrubDat[!(Species %in% c("PYROSP", "ASTECON"))]
-shrubDat[grepl("SALI", Species), Species := "SALISPP"]
 
 # Moose - winter forage -------- 
-      # may need to reorder to account for these rating rules from SKWERM 
-      # Suitabilty of 6 if Slope > 100% OR winter browse % = 0 OR elevation > 1500 m OR structural stage = 1
-
+      
+# Ranking is based off of the SkWerm habitat suitability 
+# The order of the ranking is important because we step builds off the previous ranking
 # 1) Available moose winter forage
-# 2) Lower slope percentage
-# 3) More mature structural stage
-# 4) Stand type, crown closure, and forage height
+# 2) Slope
+# 3a) Non-forested stands: structural stage and forage height
+# 3b) Forested stands: Stand type, crown closure, and forage height
 
-# 1. Available moose winter forage
+# 1. Available moose winter forage - initial ranking
+  # 1 = >40%
+  # 2 = >20-40%
+  # 3 = >10-20%
+  # 4 = 5-10%
+  # 5 = <5%
+  # 6 = 0
 MooseWinterBrowseSpecies <- c("AC", "AMELALN", "AT", "BETUGLA_VAR_GLA", "BL", "CORNSTO", "PAXIMYR", "RIBESP", "RIBEGLA", 
                                                            "RIBEHUD", "RIBELAC","RIBELAX", "RIBETRI", "ROSAACI", "SALISPP", "SORBSCO", "SORBSIT", "VIBUEDU") #check species
 MooseWinterBrowse <- PlotShrubCov[Species %in% MooseWinterBrowseSpecies,.(MooseWinterBrowsePerCov = sum(PerCov)),by = PlotID]
 PlotMoose_winterforage <- merge(PlotMoose_data, MooseWinterBrowse, by = "PlotID", all.x = TRUE)
-PlotMoose_winterforage[is.na(MooseWinterBrowsePerCov), MooseWinterBrowsePerCov := 0] # check, do we want NAs to = 0?
+#PlotMoose_winterforage[is.na(MooseWinterBrowsePerCov), MooseWinterBrowsePerCov := 0]
 PlotMoose_winterforage[, MWForageSuit := ifelse(MooseWinterBrowsePerCov == 0,6,
                                                 ifelse(MooseWinterBrowsePerCov > 40, 1, 
                                                        ifelse(MooseWinterBrowsePerCov > 20, 2,
                                                               ifelse(MooseWinterBrowsePerCov > 10, 3, 
                                                                      ifelse(MooseWinterBrowsePerCov >= 5, 4, 5)))))]
 
-# 2. Lower slope percentage
-# 40-60% then 1,2,3 = +1
-# 60-100% then 1,2 = 3, 3 = 4
+# 2. Slope
+  # < 40% = no change
+  # 40-60% then 1,2,3 = +1 
+  # 60-100% then 1,2 = 3, 3 = 4
+  # >100% = 6
 PlotMoose_winterforage[, SlopeSuit := MWForageSuit]
 PlotMoose_winterforage[, SlopeSuit := ifelse (Slope_PC > 100, 6,
                                       ifelse(Slope_PC >= 40 & Slope_PC <= 60 & SlopeSuit %in% c(1, 2, 3),SlopeSuit + 1,
                                       ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
                                       ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))))] 
+# Putting the suitabilities at the end of the data set
 setcolorder(PlotMoose_winterforage,c(names(PlotMoose_winterforage)[!names(PlotMoose_winterforage) %in% 
                                   c("MWForageSuit","SlopeSuit")],"MWForageSuit", "SlopeSuit"))
 
-# 3. Structural stage (non-forested stands)
-# if 2a, 2b, 2c, or 2d, then if 1 or 2 = 4, if 4 = 5
-# if 3a, and average height of browse is < 50 cm, then is 1, 2, or 3, +2, if 4 = 5
-AvgFoliageHeight <- shrubDat[Species %in% MooseWinterBrowseSpecies,.(MeanFoliageHeight = mean(Foliage_Height, na.rm = TRUE)),by = .(PlotID)]
+# 3a. Non-forested stands - Structural stage and Foliage height
+  # if 1 = 6
+  # if 2a, 2b, 2c, or 2d, then if 1 or 2 = 4, if 4 = 5
+  # if 3a and average height of browse is <50 cm, then if 1, 2, or 3, +2, if 4 = 5
+  # if structural stage > 3 (i.e. forested), no change - this is addressed in #4
+AvgFoliageHeight <- PlotShrubCov[Species %in% MooseWinterBrowseSpecies,.(MeanFoliageHeight = mean(HeightAvg, na.rm = TRUE)),by = .(PlotID)]
 PlotMoose_winterforage <- merge(PlotMoose_winterforage, AvgFoliageHeight, by = "PlotID", all.x = TRUE)
 
 PlotMoose_winterforage[, SSSuit := ifelse(structural_stage == 1,6,
@@ -462,29 +465,54 @@ PlotMoose_winterforage[, SSSuit := ifelse(structural_stage == 1,6,
                                                  ifelse(structural_stage == "3a" & MeanFoliageHeight < 50,
                                                         ifelse(SlopeSuit %in% 1:3, SlopeSuit + 2,
                                                                ifelse(SlopeSuit == 4, 5, SlopeSuit)), SlopeSuit)))]
+# Putting the suitabilities at the end of the data set
 setcolorder(PlotMoose_winterforage,c(names(PlotMoose_winterforage)[!names(PlotMoose_winterforage) %in% 
                                                                      c("MWForageSuit","SlopeSuit","SSSuit")],"MWForageSuit", "SlopeSuit","SSSuit"))
+# NOTE: FR01 has no structural stage of forage height, FR02 has no structural stage
 
-# 4. Stand type, crown closure, and forage height
-# if stand type is broadleaf AND average height of browse is < 50 cm, then is 1, 2, or 3, +2
-# if stand type is conifer OR mixed AND crown closure is <= 40% AND average height of browse is < 50 cm, then is 1, 2, or 3, +1
+# 3b. Forested stands - Stand type, crown closure, and forage height
+  # Below applies to structural stage > 3
+  # if stand type is broadleaf AND average height of browse is <50 cm, then if 1, 2, or 3, +2
+  # if stand type is conifer OR mixed AND crown closure is <= 40% AND average height of browse is < 50 cm, then if 1, 2, or 3, +1
 PlotMoose_winterforage[, STSuit := SSSuit]
-PlotMoose_winterforage[, STSuit := ifelse(StandType == "B" & MeanFoliageHeight < 50 & STSuit %in% 1:3, STSuit + 2,
-  ifelse(StandType %in% c("C", "M") & CrownClos <= 40 & MeanFoliageHeight < 50 & STSuit %in% 1:3, STSuit + 1, STSuit))]
 
+# Broadleaf: add 2
+PlotMoose_winterforage[
+  structural_stage %in% c("4", "5", "6") &
+    StandType == "B" &
+    MeanFoliageHeight < 50 &
+    STSuit %in% 1:3,
+  STSuit := STSuit + 2
+]
+
+# Conifer or mixed: add 1
+PlotMoose_winterforage[
+  structural_stage %in% c("4", "5", "6") &
+    StandType %in% c("C", "M") &
+    CrownClos <= 40 &
+    MeanFoliageHeight < 50 &
+    STSuit %in% 1:3,
+  STSuit := STSuit + 1
+]
+
+# Final moose winter forage ranking
 PlotMoose_winterforage[, MWFSuit := STSuit]
 
-# Moose - winter cover ------
-      # may need to reorder to account for these rating rules from SKWERM 
-      # Suitabilty of 6 if Slope > 100%  OR elevation > 1500 m OR structural stage <= 3a
 
+# Moose - winter cover ------
+      # Suitability of 6 if Slope > 100%  OR elevation > 1500 m OR structural stage <= 3a
 # 1) Structural stage
-# 2) Lower slope percentage
+# 2) Slope
 # 3) Crown closure
 # 4) Stand type
 
-# 1. Structural stage
-# Structural Stage 6 or 7 = 1, 5 = 3, 4 = 4, 3b = 5
+# 1. Structural stage - initial ranking
+  # 1 = structural stage 6 or 7
+  # 3 = structural stage 5
+  # 4 = structural stage 4
+  # 5 = structural stage 3b
+  # 6 = structural stage <=3a or lower
+
 PlotMoose_wintercover <- copy(PlotMoose_data)
 PlotMoose_wintercover[, SSSuit := ifelse(structural_stage %in% c("6", "7"), 1,
   ifelse(structural_stage == "5", 3,
@@ -493,9 +521,10 @@ PlotMoose_wintercover[, SSSuit := ifelse(structural_stage %in% c("6", "7"), 1,
         ifelse(structural_stage %in% c("1a", "1b", "2a", "2b", "2c", "2d", "3a"), 6, NA_real_)))))]
 
 
-# 2. Lower slope percentage
-# 40-60% then 1 or 3 = +1
-# 60-100% then 1 = 3, 3 = 4
+# 2. Slope
+  # 40-60% = if 1 or 3 = +1
+  # 60-100% = if 1 = 3, 3 = 4
+  # >100% = 6
 PlotMoose_wintercover[, SlopeSuit := SSSuit]
 PlotMoose_wintercover[, SlopeSuit := ifelse(Slope_PC >100,6,
                                             ifelse(Slope_PC >= 40 & Slope_PC <= 60 & SlopeSuit %in% c(1, 3),SlopeSuit + 1,
@@ -503,12 +532,12 @@ PlotMoose_wintercover[, SlopeSuit := ifelse(Slope_PC >100,6,
                                                     ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit))))]
 
 # 3. Crown closure
-# <=25% = VL-L
-# 26 - <=40% = M
-# 41 - <=60 = H
-# >60% = VH
-# if Crown closure 26 - <=40% (M), if CrownSuit 1 or 2 = 3, 3 = 4, 4 = 5
-# if Crown closure <=25% (VL-L), if CrownSuit 1 or 2 = 4, 3 or 4 = 5
+  # <=25% = VL-L
+  # 26-<=40% = M
+  # 41-<=60 = H
+  # >60% = VH
+# if Crown closure 26-<=40% (M), if 1 or 2 = 3, 3 = 4, 4 = 5
+# if Crown closure <=25% (VL-L), if 1 or 2 = 4, 3 or 4 = 5
 PlotMoose_wintercover[, CrownSuit := SlopeSuit]
 PlotMoose_wintercover[, CrownSuit := ifelse(CrownClos > 25 & CrownClos <= 40,
   ifelse(CrownSuit %in% c(1, 2), 3,
@@ -520,90 +549,118 @@ PlotMoose_wintercover[, CrownSuit := ifelse(CrownClos > 25 & CrownClos <= 40,
 # NOTE # CrownClos missing in FR01 and FR28
 
 # 4. Stand Type
-# if B, if STSuit is 1, 2, or 3 = 4, if 4 = 5
-# if M, if STSuit is 1, 2, or 3 then +1
+  # broadleaf (B), if 1, 2, or 3 = 4, if 4 = 5
+  # mixed (M), if STSuit is 1, 2, or 3 then +1
+  # conifer (C), no change (skwerm doesn't say this but we are assuming)
 PlotMoose_wintercover[, STSuit := CrownSuit]
-PlotMoose_wintercover[, STSuit := ifelse(StandType == "B" & STSuit %in% 1:3, 4,
-  ifelse(StandType == "B" & STSuit == 4, 5,
-    ifelse(StandType == "M" & STSuit %in% 1:3, STSuit + 1, STSuit)))]
+# Broadleaf: scores 1, 2, 3 become 4
+PlotMoose_wintercover[
+  StandType == "B" & STSuit %in% 1:3,
+  STSuit := 4]
+# Broadleaf: score 4 becomes 5
+PlotMoose_wintercover[
+  StandType == "B" & STSuit == 4,
+  STSuit := 5]
+# Mixed: scores 1, 2, 3 increase by 1
+PlotMoose_wintercover[
+  StandType == "M" & STSuit %in% 1:3,
+  STSuit := STSuit + 1]
 
+# Final moose winter cover ranking
 PlotMoose_wintercover[, MWCSuit := STSuit]
 
 # Moose - growing forage--------
-      # may need to reorder to account for these rating rules from SKWERM 
-      # Suitabilty of 6 if Slope > 100% OR winter browse % = 0
+      # Suitability of 6 if Slope > 100% OR winter browse % = 0
+# 1) Available moose growing season forage
+# 2) Slope
 
-# 1) Available moose growing forage
-# 2) Lower slope percentage
-
-# 1. Available moose growing forage
-# > 40% = 1, >20-40% = 2, >10-20% = 3, 5-10% = 4, <5% = 5
+# 1. Available moose growing forage - initial ranking
+  # 1 = > 40%
+  # 2 = >20-40%
+  # 3 = >10-20%
+  # 4 = 5-10%
+  # 5 = <5%
+  # 6 = 0%
 MooseGrowingBrowseSpecies <- c("AC", "AMELALN", "AT", "BETUGLA_VAR_GLA", "BL", "CORNSTO","EP", "PAXIMYR", "RIBESP", "RIBEGLA", 
                               "RIBEHUD", "RIBELAC","RIBELAX", "RIBETRI", "ROSAACI", "SALISPP", "SORBSCO", "SORBSIT", "VIBUEDU" ) #check species
 MooseGrowingBrowse <- PlotShrubCov[Species %in% MooseGrowingBrowseSpecies,.(MooseGrowingBrowsePerCov = sum(PerCov)),by = PlotID]
 PlotMoose_growingforage <- merge(PlotMoose_data, MooseGrowingBrowse, by = "PlotID", all.x = TRUE)
-PlotMoose_growingforage[is.na(MooseGrowingBrowsePerCov), MooseGrowingBrowsePerCov := 0] #check, do we want NAs to = 0?
+#PlotMoose_growingforage[is.na(MooseGrowingBrowsePerCov), MooseGrowingBrowsePerCov := 0]
 PlotMoose_growingforage[, MGForageSuit := ifelse(MooseGrowingBrowsePerCov == 0, 6,
                                                  ifelse(MooseGrowingBrowsePerCov > 40, 1,
                                                         ifelse(MooseGrowingBrowsePerCov > 20, 2,
                                                                ifelse(MooseGrowingBrowsePerCov > 10, 3, 
                                                                       ifelse(MooseGrowingBrowsePerCov >= 5, 4, 5)))))]
+# Note that FR01 doesn't actually have any data
 
-# 2. Lower slope percentage
-# 60-100% then 1, 2 = 3, 3 = 4
+# 2. Slope
+  # 60-100% if 1, 2 = 3, 3 = 4
+  # >100% = 6
 PlotMoose_growingforage[, SlopeSuit := MGForageSuit]
 PlotMoose_growingforage[, SlopeSuit := ifelse(Slope_PC>100,6,
                                               ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
                                                     ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit)))] 
 
+# Final moose growing season forage ranking
 PlotMoose_growingforage[, MGFSuit := SlopeSuit]
 
 # Moose - growing cover ------
-    # may need to reorder to account for these rating rules from SKWERM 
-    # Suitabilty of 6 if Slope > 100% OR structural stage <= 2
-
+    # Suitability of 6 if Slope > 100% OR structural stage <= 2
 # 1) Structural stage
-# 2) Lower slope percentage
+# 2) Slope
 # 3) Aspect
 # 4) Crown closure
 # 5) Stand type
 
-# 1. Structural stage
-# Structural Stage 3b-7 = 1, 3a = 3
+# 1. Structural stage - initial ranking
+  # 1 = structural Stage 3b-7
+  # 3 = structural stage 3a
+  # 6 = structural stage <= 2
 PlotMoose_growingcover <- copy(PlotMoose_data)
 PlotMoose_growingcover[, SSSuit := ifelse(structural_stage%in% c("1a","1b","2a","2b","2c","2d"), 6,
   ifelse(structural_stage %in% c("3b","4","5","6","7"), 1,
                                          ifelse(structural_stage == "3a", 3, NA_real_)))]
+# NOTE: missing structural stage for FR01 and FR02
 
-# 2. Lower slope percentage
-# 60-100% then 1 or 2 = 3, 3 = 4
+# 2. Slope
+  # 60-100% if 1 or 2 = 3, 3 = 4
+  # >100% = 6
 PlotMoose_growingcover[, SlopeSuit := SSSuit]
 PlotMoose_growingcover[, SlopeSuit := ifelse(Slope_PC > 100,6,
                          ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit %in% c(1, 2), 3,
                                                    ifelse(Slope_PC > 60 & Slope_PC <= 100 & SlopeSuit == 3,4,SlopeSuit)))]
 
 # 3. Aspect
-# if slope >10% and has aspect 135-225 then 1,2,3 = +1
+  # if slope >10% and has aspect 135-225 then 1,2,3 = +1
 PlotMoose_growingcover[, AspectSuit := SlopeSuit]
 PlotMoose_growingcover[, AspectSuit := ifelse(Slope_PC > 10 & Aspect >= 135 & Aspect <=225 & 
                                                 SlopeSuit %in% 1:3, SlopeSuit +1, SlopeSuit)]
 
 # 4. Crown closure
-# <=25% = VL-L
-# 26 - <=40% = M
-# 41 - <=60 = H
-# >60% = VH
-# if Crown closure <=25% (VL-L), if CrownSuit 1 or 2 = 3, 3 = 4
+  # <=25% = VL-L
+  # 26 - <=40% = M
+  # 41 - <=60 = H
+  # >60% = VH
+# Crown closure <=25% (VL-L), if 1 or 2 = 3, 3 = 4
 PlotMoose_growingcover[, CrownSuit := AspectSuit]
 PlotMoose_growingcover[, CrownSuit := ifelse(CrownClos <= 25,
                                             ifelse(CrownSuit %in% c(1, 2), 3,
                                                    ifelse(CrownSuit == 3, 4, CrownSuit)),CrownSuit)]
+# NOTE: no crown closure for FR28
 
 # 5. Stand type
-# if B, if STSuit is 1, 2 = 3, if 3 = 4
+  # broadleaf (B), if 1, 2 = 3, if 3 = 4
 PlotMoose_growingcover[, STSuit := CrownSuit]
-PlotMoose_growingcover[, STSuit := ifelse(StandType == "B" & STSuit %in% 1:2, 3,
-                                         ifelse(StandType == "B" & STSuit == 3, 4,STSuit))]
+
+PlotMoose_growingcover[
+  !is.na(StandType) & StandType == "B" & STSuit %in% 1:2,
+  STSuit := 3]
+
+PlotMoose_growingcover[
+  !is.na(StandType) & StandType == "B" & STSuit == 3,
+  STSuit := 4]
+
+# Final growing season cover
 PlotMoose_growingcover[, MGCSuit := STSuit]
 
 #-- ALL SPECIES 
