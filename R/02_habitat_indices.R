@@ -408,7 +408,6 @@ PlotMoose_data <- merge(FR_treatments[, .(PlotID, Planted, Aspect, CumBurnSevCat
 PlotMoose_data <- merge(PlotMoose_data, PlotCrown, by = "PlotID", all.x = TRUE)
 PlotMoose_data <- merge(PlotMoose_data, standType, by = "PlotID", all.x = TRUE)
 
-
 # Moose - winter forage -------- 
       
 # Ranking is based off of the SkWerm habitat suitability 
@@ -568,6 +567,41 @@ PlotMoose_wintercover[
 
 # Final moose winter cover ranking
 PlotMoose_wintercover[, MWCSuit := STSuit]
+
+# Trying to use modifiers instead of SKWERM (but modifiers based on SKWERM)
+PlotMooseWC<-copy(PlotMoose_data)
+PlotMooseWC[, SlopeSuit :=
+                 fifelse(Slope_PC<40,1,
+                         fifelse(Slope_PC<60, 0.8,
+                                 fifelse(Slope_PC<100,0.5,0)))]
+PlotMooseWC[, AspectSuit :=
+                 fifelse(is.na(Aspect), 1.0,
+                         fifelse(Aspect >= 315 | Aspect <= 45, 0.8,
+                                 fifelse(Aspect >= 135 & Aspect <= 225, 1.0,
+                                         fifelse(Aspect > 45 & Aspect < 135, 0.9,
+                                                 fifelse(Aspect > 225 & Aspect < 315, 0.9, 0)))))]
+
+PlotMooseWC[, StructSuit :=
+                 fifelse(structural_stage %in% c("6", "7"), 1,
+                         fifelse(structural_stage =="5", 0.5,
+                                 fifelse(structural_stage =="4",0.25,
+                                         fifelse(structural_stage == "3b",0.05,0))))]
+PlotMooseWC[, ElevSuit :=
+                 fifelse(elevation<1200,1,
+                         fifelse(elevation<1500, 0.8,0))]
+
+PlotMooseWC[, CrownSuit :=
+                 fifelse(CrownClos>60,1,
+                         fifelse(CrownClos>40, 0.8,
+                                 fifelse(CrownClos>25,0.5,0.1)))]
+PlotMooseWC[, StandSuit :=
+                 fifelse(is.na(StandType), 1,
+                         fifelse(StandType =="C", 1,
+                                 fifelse(StandType =="M",0.6,
+                                         fifelse(StandType == "B",0.2,0))))]
+
+PlotMooseWC[, MWCHabitat := round(sum(1*(SlopeSuit), 1*(AspectSuit), 1*(StructSuit), 
+                                         1*(ElevSuit),1*(CrownSuit),1*(StandSuit)), digits = 2), by=PlotID]
 
 # Moose - growing forage--------
       # Suitability of 6 if Slope > 100% OR winter browse % = 0
