@@ -599,9 +599,23 @@ PlotMooseWC[, StandSuit :=
                          fifelse(StandType =="C", 1,
                                  fifelse(StandType =="M",0.6,
                                          fifelse(StandType == "B",0.2,0))))]
+# MOOSE WINTER COVER HABITAT INDEX
 
-PlotMooseWC[, MWCHabitat := round(sum(1*(SlopeSuit), 1*(AspectSuit), 1*(StructSuit), 
-                                         1*(ElevSuit),1*(CrownSuit),1*(StandSuit)), digits = 2), by=PlotID]
+# look into more references
+# 1 * Crown closure (Wall et al. 2011; Eastmann 1977)
+# 1 * Stand composition (Wall et al. 2011; SKWERM 2026)
+# 1 * Structural Stage (Wall et al. 2011; SKWERM 2026)
+# 0.75 * Elevation (Gillingham and Parker 2008; Wall et al. 2011; Eastmann 1977; SKWERM 2026)
+# 0.65 * Slope (Wall et al. 2011; SKWERM 2026)
+# 0.4 * Aspect (Wall et al. 2011; Eastmann 1977; SKWERM 2026)
+
+PlotMooseWC[, MWCHabitat := round(sum(0.65*(SlopeSuit), 0.4*(AspectSuit), 1*(StructSuit), 
+                                         0.75*(ElevSuit),1*(CrownSuit),1*(StandSuit)), digits = 2), by=PlotID] # similar to marten, unsure why not multiplicative?
+# Multiplicative model (SKWERM standard) 
+PlotMooseWC[, MWCHabitat := round(
+  SlopeSuit * AspectSuit * StructSuit * ElevSuit * CrownSuit * StandSuit, 
+  digits = 2
+), by = PlotID]
 
 # Moose - growing forage--------
       # Suitability of 6 if Slope > 100% OR winter browse % = 0
