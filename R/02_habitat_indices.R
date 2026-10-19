@@ -109,6 +109,7 @@ standType[, StandType := fifelse(fcoalesce(conComp, 0) > 0.75, "C",
 
 # Individual shrub species percent cover (calculated from their volumes) and average height
 PlotShrubCov <- ShrubSpCov(ShrubVolume)
+PlotShrubCov[Species == "MOHOAQU", Species := "MAHOAQU"]
 # % cover of huckleberry berries
 PlotHuckberry <- Huckberry(PlotShrubCov, PlotCrown)
 PlotThermalForage <- ThermalForage(PlotShrubCov, PlotCrown)
@@ -711,6 +712,57 @@ PlotMoose_growingcover[
 # Final growing season cover
 PlotMoose_growingcover[, MGCSuit := STSuit]
 
+
+# ELK ###########
+PlotElk_data <- copy(PlotMoose_data)
+
+# Elk - winter forage ####
+# Slope - NA or factor of snow depth/interception
+# Aspect - south-facing  (RIC, 1997d; Safford 2004; Poole and Mowat 2005)
+# Elevation - lower than growing season, limited by snow depth
+# Crown Closure - closed (Hobbs et al. 1981)
+# Stand Type - Conifer/shrub (Hobbs et al. 1981)
+
+# 1) Available elk winter forage
+ElkWinterBrowseSpecies <- c("AC", "AT", "AMELALN", "SORBSCO", "EP", "LONIINV", "MAHOAQU", "OPLOHOR", "PAXIMYR", "FD", "SALISPP", 
+                            "VACCMEM", "VACCOVA", "VACCMYR", "VIBUEDU", "RIBELAC", "RIBESP", "ROSAACI", "SYMPALB", "SHEPCAN", 
+                            "BL", "SORBSIT", "RUBUPAR")
+
+ElkWinterBrowse <- PlotShrubCov[Species %in% ElkWinterBrowseSpecies,.(ElkWinterBrowsePerCov = sum(PerCov)),by = PlotID] # CHECK
+
+# Elk - winter cover ####
+# Slope - NA or factor of snow depth/interception
+# Aspect - south-facing  (RIC, 1997d; Safford 2004; Poole and Mowat 2005)
+# Elevation - lower than growing season, limited by snow depth
+
+# Elk - growing forage ####
+# Slope - NA
+# Aspect - NA
+# Elevation - NA
+# Forage - more forage = better, using same categories as moose (>40%, >20-40%, >10-20%, 5-10%, <5%, 0)
+# Forage Height - 2.5 m reach (Baker et al. 1997)
+# Stand Type - C/M/B all good, non-forested only good if wetland, vegetated slide, or rock outcrop (Nyberg and Janz, 1990)
+# Structural Stage - 1 = poor, 2-3 = moderate, 4-7 = good  (Goulet and Haddow, 1985)
+# Crown closure - open = good (Peek et al., 1982)
+# Edge habitat - good (unsure how to model this and maybe don't need to bc we are separating cover and forage)
+
+# 1) Available elk growing forage
+ElkGrowingBrowseSpecies <- c("AMELALN", "AT", "SALISPP", "LONIINV", "MAHOAQU", "RIBELAC", "RIBESP", "RUBUPAR", "RUBUIDA", 
+                             "SAMBRAC", "VACCMEM", "VACCOVA", "VACCMYR", "ACERGLA", "ALNUSIN", "MENZFER", "SYMPALB", 
+                             "VIBUEDU", "SORBSIT", "SORBSCO", "OPLOHOR", "PAXIMYR")
+ElkGrowingBrowse <- PlotShrubCov[Species %in% ElkGrowingBrowseSpecies,.(ElkGrowingBrowsePerCov = sum(PerCov)),by = PlotID] # CHECK some percent covers total to >100%
+
+# Elk - growing cover #####
+# Slope - NA
+# Aspect - NA
+# Elevation - higher elevation = less predators (Moa et al. 2005)
+# Forage - more forage = better, using same categories as moose (>40%, >20-40%, >10-20%, 5-10%, <5%, 0)
+# Forage Height - 2.5 m reach (Baker et al. 1997)
+# Stand Type - C/M/B all good, non-forested only good if wetland, vegetated slide, or rock outcrop (Nyberg and Janz, 1990)
+# Structural Stage - 1 = poor, 2-3 = moderate, 4-7 = good  (Goulet and Haddow, 1985)
+# Crown closure - open = good (Peek et al., 1982)
+# Edge habitat - good (unsure how to model this and maybe don't need to bc we are separating cover and forage)
+
 #-- ALL SPECIES 
 HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotFisher, ("FisherHabitat") := mget("FisherHabitat"), on = "PlotID"]
@@ -728,10 +780,6 @@ HabitatIndices <- HabitatIndices[PlotMoose_growingcover, ("MooseGrowingCoverHabi
 
 # export 
 write.csv(HabitatIndices, file.path(out_dir,"hab_ind.csv"), row.names = FALSE)
-
-
-
-
 
 #-----------------------
 #-- Preliminary Figures
