@@ -613,7 +613,7 @@ PlotMooseWC[, MWCHabitat := round(sum(0.65*(SlopeSuit), 0.4*(AspectSuit), 1*(Str
                                          0.75*(ElevSuit),1*(CrownSuit),1*(StandSuit)), digits = 2), by=PlotID] # similar to marten, unsure why not multiplicative?
 # Multiplicative model (SKWERM standard) 
 PlotMooseWC[, MWCHabitat := round(
-  SlopeSuit * AspectSuit * StructSuit * ElevSuit * CrownSuit * StandSuit, 
+  (0.65*SlopeSuit) * (0.4*AspectSuit) * (1*StructSuit) * (0.75*ElevSuit) * (1*CrownSuit) * (1*StandSuit), 
   digits = 2
 ), by = PlotID]
 
