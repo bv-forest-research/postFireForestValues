@@ -9,9 +9,13 @@
 
 
 # Load libraries
+install.packages("terra")
+install.packages("C:/Users/Nikki Beaudoin/Downloads/ClimateNAr.zip",repos = NULL, type = "win.binary")
 library(data.table)
 library(tidyverse)
 library(ggpubr)
+library(terra)
+library(ClimateNAr)
 
 in_dir <- "01-data_inputs"
 out_dir <- "02-prepped_values"
@@ -98,6 +102,14 @@ treeComp <- PlotTree[DBH_bin >=12, totalSPH := sum(SPH), by=c("PlotID")] # add d
 treeComp <- treeComp[DBH_bin >=12, .(spComp=sum(SPH)/totalSPH), by=c("PlotID", "Species")]
 treeComp <- unique(treeComp)
 
+allPlots <- data.table(PlotID = sprintf("FR%02d", 1:75))
+missingPlots <- allPlots[
+  !PlotTree[DBH_bin >= 12, unique(PlotID)],
+  on = "PlotID"
+]
+missingPlots[, `:=`(Species = NA_character_, spComp = 1)]
+treeComp <- rbind(treeComp[, .(PlotID, Species, spComp)], missingPlots, fill = TRUE) #adding in plots with no large trees and assigning them a SpComp of 1 for NA
+
 # Stand type
 # Classify stand type - which is based on tree species composition
 # Conifer (c) - Greater than 3/4 of total tree layer cover is coniferous
@@ -105,8 +117,10 @@ treeComp <- unique(treeComp)
 # Mixed (M) - Neither coniferous or broadleaf account for > 75% of total tree layer cover
 standType <- treeComp[, .(conComp = sum(spComp[Species %in% c("Sx", "Pl", "Bl", "UC", "Lw", "Fd")]),
                           broadComp = sum(spComp[Species %in% c("Ac", "At", "Ep")])), by = PlotID]
-standType[, StandType := fifelse(fcoalesce(conComp, 0) > 0.75, "C",
-                                 fifelse(fcoalesce(broadComp, 0) > 0.75, "B", "M"))]
+standType[, StandType := fifelse(conComp > 0.75, "C",
+                                 fifelse(broadComp > 0.75, "B",
+                                         fifelse(conComp > 0.25 & conComp < 0.75 & broadComp > 0.25 & broadComp < 0.75, "M",
+                                                 fifelse(conComp == 0 & broadComp == 0, "NF", NA_character_))))] #adding in mixed and non-forested class 
 
 
 # Individual shrub species percent cover (calculated from their volumes) and average height
@@ -405,11 +419,8 @@ PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by
 
 # Create base metrics for moose indices. Indices are based on SkWerm habitat suitability protocols 
 # All/most indices require elevation, slope, structural stage, stand type
-Plot_latlong[, `:=`(PlotID = factor(PlotID))]
-plot_treatments <- merge(Plot_latlong,plot_treatments, by = "PlotID",all.x = TRUE)
 PlotMoose_data <- merge(FR_treatments[, .(PlotID, Planted, Aspect, CumBurnSevCat, elevation, TimeSinceFire, Slope_PC)],
   structstage, by = "PlotID",  all.x = TRUE)
-PlotMoose_data <- merge(PlotMoose_data, Plot_latlong, by = "PlotID", all.x = TRUE)
 # NOTE # missing structural stage in FR01 and FR02
 PlotMoose_data <- merge(PlotMoose_data, PlotCrown, by = "PlotID", all.x = TRUE)
 PlotMoose_data <- merge(PlotMoose_data, standType, by = "PlotID", all.x = TRUE)
