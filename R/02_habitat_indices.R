@@ -728,6 +728,7 @@ PlotMoose_growingcover[, MGCSuit := STSuit]
 # ELK ###########
 PlotElk_data <- merge(FR_treatments[, .(PlotID, Aspect, elevation, Slope_PC)],
                                      structstage, by = "PlotID",  all.x = TRUE)
+# SNOW -- likely will move to 01_snow_depth.R
 PlotElk_data[, ElevSnow :=
           fifelse(elevation < 800, 1,
                   fifelse(elevation < 1000, 0.8,
