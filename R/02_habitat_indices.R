@@ -13,7 +13,6 @@ library(data.table)
 library(tidyverse)
 library(ggpubr)
 
-
 in_dir <- "01-data_inputs"
 out_dir <- "02-prepped_values"
 
@@ -25,6 +24,10 @@ sapply(files_to_source, source)
 # Plot/treatment data:
 FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
 setnames(FR_treatments, "ID", "PlotID")
+
+# Plot location data:
+Plot_latlong <-fread(file.path(in_dir, "FireRehabPlots_LatLong.csv"))
+setnames(Plot_latlong, "ID", "PlotID")
 
 #Tree data:
 A1trees <- fread(file.path(in_dir,"A1trees.csv"))
@@ -55,7 +58,6 @@ scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 FR_treatments[, `:=`(PlotID = factor(PlotID), Planted = factor(Planted),TimeSinceFire = 2020 - FIRE_YEAR)]
 #for this paper, we don't need all the columns:
 plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire, CumBurnSev)]
-
 
 # Calculate plot attributes ----------------------------------------------------------------------------------
 # These attributes are metrics that will be used in one or many of the habitat indices
@@ -403,8 +405,11 @@ PlotGrizzly[, GrizzlyHabitat := sum(Ants, ForageCov, 2*HuckCov, ThermForage), by
 
 # Create base metrics for moose indices. Indices are based on SkWerm habitat suitability protocols 
 # All/most indices require elevation, slope, structural stage, stand type
+Plot_latlong[, `:=`(PlotID = factor(PlotID))]
+plot_treatments <- merge(Plot_latlong,plot_treatments, by = "PlotID",all.x = TRUE)
 PlotMoose_data <- merge(FR_treatments[, .(PlotID, Planted, Aspect, CumBurnSevCat, elevation, TimeSinceFire, Slope_PC)],
   structstage, by = "PlotID",  all.x = TRUE)
+PlotMoose_data <- merge(PlotMoose_data, Plot_latlong, by = "PlotID", all.x = TRUE)
 # NOTE # missing structural stage in FR01 and FR02
 PlotMoose_data <- merge(PlotMoose_data, PlotCrown, by = "PlotID", all.x = TRUE)
 PlotMoose_data <- merge(PlotMoose_data, standType, by = "PlotID", all.x = TRUE)
@@ -714,8 +719,30 @@ PlotMoose_growingcover[, MGCSuit := STSuit]
 
 
 # ELK ###########
-PlotElk_data <- copy(PlotMoose_data)
-
+PlotElk_data <- merge(FR_treatments[, .(PlotID, Aspect, elevation, Slope_PC)],
+                                     structstage, by = "PlotID",  all.x = TRUE)
+PlotElk_data[, ElevSnow :=
+          fifelse(elevation < 800, 1,
+                  fifelse(elevation < 1000, 0.8,
+                          fifelse(elevation < 1200, 0.5,
+                                  fifelse(elevation < 1400, 0.2, 0))))]
+PlotElk_data[, AspectSnow :=
+          fifelse(is.na(Aspect), 1,
+                  fifelse(Aspect >= 135 & Aspect <= 225, 1,
+                          fifelse(Aspect >= 90 & Aspect < 135 |
+                                    Aspect > 225 & Aspect <= 270, 0.7,
+                                  fifelse(Aspect >= 45 & Aspect < 90 |
+                                            Aspect > 270 & Aspect <= 315, 0.4,
+                                          0.2))))]
+PlotElk_data[, SlopeSnow :=
+          fifelse(Slope_PC > 100, 1,
+                  fifelse(Slope_PC > 60, 0.8,
+                          fifelse(Slope_PC > 40, 0.6,
+                                  fifelse(Slope_PC > 20, 0.3, 0.1))))]
+PlotElk_data[, SnowIndex :=
+          round((ElevSnow*0.5 +
+                   AspectSnow*0.3 +
+                   SlopeSnow*0.2), 2)]
 # Elk - winter forage ####
 # Slope - NA or factor of snow depth/interception
 # Aspect - south-facing  (RIC, 1997d; Safford 2004; Poole and Mowat 2005)
