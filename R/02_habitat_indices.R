@@ -9,13 +9,9 @@
 
 
 # Load libraries
-install.packages("terra")
-install.packages("C:/Users/Nikki Beaudoin/Downloads/ClimateNAr.zip",repos = NULL, type = "win.binary")
 library(data.table)
 library(tidyverse)
 library(ggpubr)
-library(terra)
-library(ClimateNAr)
 
 in_dir <- "01-data_inputs"
 out_dir <- "02-prepped_values"
