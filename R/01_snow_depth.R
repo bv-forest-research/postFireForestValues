@@ -5,6 +5,10 @@
 # Nikki Beaudoin
 # October 10, 2026
 
+# Install packages
+install.packages("terra")
+install.packages("C:/Users/Nikki Beaudoin/Downloads/ClimateNAr.zip",repos = NULL, type = "win.binary")
+
 # Load libraries
 library(data.table)
 library(tidyverse)
