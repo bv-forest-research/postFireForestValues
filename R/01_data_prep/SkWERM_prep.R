@@ -55,16 +55,9 @@ scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 
 # Cleaning (small)
 #Plot treatment cleaning
-FR_treatments[, `:=`(PlotID = factor(PlotID),BGC_LABEL = as.character(BGC_LABEL), TimeSinceFire = 2020 - FIRE_YEAR)]
+FR_treatments[, `:=`(PlotID = factor(PlotID), TimeSinceFire = 2020 - FIRE_YEAR)]
 #for this paper, we don't need all the columns:
-plot_treatments <- FR_treatments[,.(PlotID, Aspect, Slope_PC, elevation, BGC_LABEL, TimeSinceFire)]
-plot_treatments[, `:=`(
-  BGC_zone = sub("^([A-Z]+).*", "\\1", BGC_LABEL), # Extract leading uppercase letters
-  BGC_subzone = sub("^([A-Z]+)", "", BGC_LABEL), # Remove zone and variant, leaving subzone
-  BGC_var = fifelse(grepl("[0-9]+$", gsub(" ", "", BGC_LABEL)), # Extract variant at end if present
-    sub(".*([0-9]+)$", "\\1", gsub(" ", "", BGC_LABEL)), NA_character_))]
-plot_treatments[, BGC_subzone := gsub("[[:space:]]*[0-9]+$", "", BGC_subzone)] # Remove trailing variant from subzone
-plot_treatments[, BGC_subzone := trimws(BGC_subzone)]
+plot_treatments <- FR_treatments[,.(PlotID, Aspect, Slope_PC, elevation,  TimeSinceFire)]
 
 # Calculate plot attributes ----------------------------------------------------------------------------------
 # These attributes are metrics that will be used in one or many of the habitat indices
@@ -143,12 +136,13 @@ PlotHuckberry <- Huckberry(PlotShrubCov, PlotCrown)
 PlotThermalForage <- ThermalForage(PlotShrubCov, PlotCrown)
 
 # Combine plot data
-plot_treatments<-merge(plot_treatments,FRplots_dt[,.(PlotID, Longitude,Latitude)], by = "PlotID")
+plot_treatments<-merge(plot_treatments,FRplots_dt[,.(PlotID, Longitude,Latitude, ZONE, SUBZONE, VARIANT, PHASE)], by = "PlotID")
 plot_treatments<-merge(plot_treatments,FR_structural_stage, by = "PlotID")
 plot_treatments<-merge(plot_treatments,standType, by = "PlotID")
 plot_treatments<-merge(plot_treatments,plotBAPH_species_wide, by = "PlotID")
 plot_treatments<-merge(plot_treatments,PlotCrown, by = "PlotID")
 setnames(plot_treatments, c("Aspect", "Slope_PC", "elevation", "structural_stage","CrownClos"),
          c("ASPECT","SLOPE", "ELEV", "STRCT","CR_CLOSURE"))
+plot_treatments[,SITE_M3A := NA_character_]
 
 
