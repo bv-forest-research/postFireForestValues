@@ -1,74 +1,38 @@
-install.packages(c("readxl", "dplyr", "sf", "writexl"))
-library(readxl)
+# Load libraries
+library(data.table)
+library(tidyverse)
+library(ggpubr)
 library(dplyr)
 library(sf)
-library(writexl)
-file_path <- "C:/Users/Nikki Beaudoin/Documents/r_repo/postFireForestValues/01-data_inputs/FireRehabData_v5.xlsx"
-sites <- read_excel(file_path, sheet = "Plot")
+
+in_dir <- "01-data_inputs"
+out_dir <- "02-prepped_values"
+
+
+
+#-- Load data-------------------------------------------------------------------
+# Plot/treatment data:
+FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
+setnames(FR_treatments, "ID", "PlotID")
+
 # Convert UTMs to Lat/Long #########
-# Convert coordinate columns to numeric
-sites <- sites %>%
-  mutate(
-    Easting = as.numeric(Easting),
-    Northing = as.numeric(Northing),
-    UTM_zone_num = as.integer(
-      gsub("[^0-9]", "", as.character(UTM_zone))
-    )
-  )
+# Convert to an sf object using UTM coordinates
+FR_treatments_sf <- st_as_sf(
+  FR_treatments,
+  coords = c("Easting", "Northing"),
+  crs = 26909,  # Example: NAD83 / UTM zone 9N
+  remove = FALSE)
 
-# Initialize output columns
-sites$Longitude <- NA_real_
-sites$Latitude <- NA_real_
+# Transform to latitude/longitude (WGS84)
+FR_treatments_ll <- st_transform(FR_treatments_sf, crs = 4326)
 
-# Identify rows with valid coordinates and UTM zones
-valid <- with(
-  sites,
-  !is.na(Easting) &
-    !is.na(Northing) &
-    !is.na(UTM_zone_num) &
-    UTM_zone_num >= 1 &
-    UTM_zone_num <= 60
-)
+# Extract longitude and latitude
+coords <- st_coordinates(FR_treatments_ll)
 
-# Convert each UTM zone separately
-for (z in unique(sites$UTM_zone_num[valid])) {
-  
-  idx <- which(valid & sites$UTM_zone_num == z)
-  
-  points <- st_as_sf(
-    sites[idx, ],
-    coords = c("Easting", "Northing"),
-    crs = 32600 + z
-  )
-  
-  points_ll <- st_transform(points, crs = 4326)
-  coords <- st_coordinates(points_ll)
-  
-  sites$Longitude[idx] <- coords[, 1]
-  sites$Latitude[idx] <- coords[, 2]
-}
+FR_treatments[, Longitude := coords[, 1]]
+FR_treatments[, Latitude := coords[, 2]]
 
-# Review all sites
-sites %>%
-  select(ID, UTM_zone, Easting, Northing,
-         Latitude, Longitude) %>%
-  print(n = 75)
-
-# Check which sites could not be converted
-sites %>%
-  filter(is.na(Latitude) | is.na(Longitude)) %>%
-  select(ID, UTM_zone, Easting, Northing)
-
-# Export results
-output_path <- "C:/Users/Nikki Beaudoin/Documents/r_repo/postFireForestValues/01-data_inputs/FireRehabData_v5_with_LatLong.xlsx"
-
-write_xlsx(
-  sites %>% select(-UTM_zone_num),
-  output_path
-)
-
-cat("Saved file to:", output_path)
-
+######## IGNORE FOR NOW #########
 # Convert .xlsx to shapefile in QGIS #########
 latlong <- "C:/Users/Nikki Beaudoin/Documents/r_repo/postFireForestValues/01-data_inputs/FireRehabData_v5_with_LatLong.xlsx"
 
@@ -163,49 +127,3 @@ sites_bec %>%
   st_drop_geometry() %>%
   select(ID, Latitude, Longitude) %>%
   head()
-
-# Adding BEU ########
-
-beu_url <- paste0(
-  "https://delivery.maps.gov.bc.ca/arcgis/rest/services/",
-  "whse/bcgw_pub_whse_terrestrial_ecology/MapServer/7"
-)
-
-beu <- st_read(
-  paste0(beu_url, "/query?where=1%3D1&outFields=*&",
-         "returnGeometry=true&f=geojson"),
-  quiet = FALSE
-)
-
-# Ensure both layers use the same coordinate reference system
-beu <- st_transform(beu, st_crs(sites_bec))
-
-# Join BEU attributes to each site
-sites_beu <- st_join(
-  sites_bec,
-  beu,
-  join = st_within,
-  left = TRUE
-)
-
-# View the results
-names(sites_beu)
-
-sites_beu %>%
-  st_drop_geometry() %>%
-  select(ID, Latitude, Longitude) %>%
-  head()
-
-
-
-
-
-# Count unique values in the available fields
-beu %>%
-  st_drop_geometry() %>%
-  count(FEATURE_CODE, sort = TRUE)
-
-beu %>%
-  st_drop_geometry() %>%
-  count(QBEI_TAG, sort = TRUE) %>%
-  print(n = 20)
