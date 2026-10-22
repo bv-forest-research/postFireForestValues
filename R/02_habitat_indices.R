@@ -26,6 +26,7 @@ FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
 setnames(FR_treatments, "ID", "PlotID")
 
 # Plot location data:
+#########THIS WILL CHANGE#######
 Plot_latlong <-fread(file.path(in_dir, "FireRehabPlots_LatLong.csv"))
 setnames(Plot_latlong, "ID", "PlotID")
 
