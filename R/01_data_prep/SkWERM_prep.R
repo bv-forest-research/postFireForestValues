@@ -94,6 +94,8 @@ setnames(PlotCrown,"CrownClos","CR_CLOSURE")
 # Basal area
 # live
 PlotBAPHlive <- BAPHlive(A1trees, B1trees)
+ # live by species
+plotBAPH_species<-BAPH_species(A1trees, B1trees)
 # dead
 PlotBAPHdead <- BAPHdead(A1trees, B1trees)
 
@@ -141,4 +143,5 @@ plot_treatments<-merge(plot_treatments,FRplots_dt[,.(PlotID, Longitude,Latitude)
 plot_treatments<-merge(plot_treatments,FR_structural_stage, by = "PlotID")
 plot_treatments<-merge(plot_treatments,FR_structural_stage, by = "PlotID")
 plot_treatments<-merge(plot_treatments,standType, by = "PlotID")
+
 
