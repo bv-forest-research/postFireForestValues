@@ -13,7 +13,6 @@ library(data.table)
 library(tidyverse)
 library(ggpubr)
 
-
 in_dir <- "01-data_inputs"
 out_dir <- "02-prepped_values"
 
@@ -25,6 +24,11 @@ sapply(files_to_source, source)
 # Plot/treatment data:
 FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
 setnames(FR_treatments, "ID", "PlotID")
+
+# Plot location data:
+#########THIS WILL CHANGE#######
+Plot_latlong <-fread(file.path(in_dir, "FireRehabPlots_LatLong.csv"))
+setnames(Plot_latlong, "ID", "PlotID")
 
 #Tree data:
 A1trees <- fread(file.path(in_dir,"A1trees.csv"))
@@ -55,7 +59,6 @@ scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 FR_treatments[, `:=`(PlotID = factor(PlotID), Planted = factor(Planted),TimeSinceFire = 2020 - FIRE_YEAR)]
 #for this paper, we don't need all the columns:
 plot_treatments <- FR_treatments[,.(PlotID, Planted, TimeSinceFire, CumBurnSev)]
-
 
 # Calculate plot attributes ----------------------------------------------------------------------------------
 # These attributes are metrics that will be used in one or many of the habitat indices
@@ -96,6 +99,14 @@ treeComp <- PlotTree[DBH_bin >=12, totalSPH := sum(SPH), by=c("PlotID")] # add d
 treeComp <- treeComp[DBH_bin >=12, .(spComp=sum(SPH)/totalSPH), by=c("PlotID", "Species")]
 treeComp <- unique(treeComp)
 
+allPlots <- data.table(PlotID = sprintf("FR%02d", 1:75))
+missingPlots <- allPlots[
+  !PlotTree[DBH_bin >= 12, unique(PlotID)],
+  on = "PlotID"
+]
+missingPlots[, `:=`(Species = NA_character_, spComp = 1)]
+treeComp <- rbind(treeComp[, .(PlotID, Species, spComp)], missingPlots, fill = TRUE) #adding in plots with no large trees and assigning them a SpComp of 1 for NA
+
 # Stand type
 # Classify stand type - which is based on tree species composition
 # Conifer (c) - Greater than 3/4 of total tree layer cover is coniferous
@@ -103,12 +114,15 @@ treeComp <- unique(treeComp)
 # Mixed (M) - Neither coniferous or broadleaf account for > 75% of total tree layer cover
 standType <- treeComp[, .(conComp = sum(spComp[Species %in% c("Sx", "Pl", "Bl", "UC", "Lw", "Fd")]),
                           broadComp = sum(spComp[Species %in% c("Ac", "At", "Ep")])), by = PlotID]
-standType[, StandType := fifelse(fcoalesce(conComp, 0) > 0.75, "C",
-                                 fifelse(fcoalesce(broadComp, 0) > 0.75, "B", "M"))]
+standType[, StandType := fifelse(conComp > 0.75, "C",
+                                 fifelse(broadComp > 0.75, "B",
+                                         fifelse(conComp > 0.25 & conComp < 0.75 & broadComp > 0.25 & broadComp < 0.75, "M",
+                                                 fifelse(conComp == 0 & broadComp == 0, "NF", NA_character_))))] #adding in mixed and non-forested class 
 
 
 # Individual shrub species percent cover (calculated from their volumes) and average height
 PlotShrubCov <- ShrubSpCov(ShrubVolume)
+PlotShrubCov[Species == "MOHOAQU", Species := "MAHOAQU"]
 # % cover of huckleberry berries
 PlotHuckberry <- Huckberry(PlotShrubCov, PlotCrown)
 PlotThermalForage <- ThermalForage(PlotShrubCov, PlotCrown)
@@ -408,7 +422,6 @@ PlotMoose_data <- merge(FR_treatments[, .(PlotID, Planted, Aspect, CumBurnSevCat
 PlotMoose_data <- merge(PlotMoose_data, PlotCrown, by = "PlotID", all.x = TRUE)
 PlotMoose_data <- merge(PlotMoose_data, standType, by = "PlotID", all.x = TRUE)
 
-
 # Moose - winter forage -------- 
       
 # Ranking is based off of the SkWerm habitat suitability 
@@ -569,6 +582,55 @@ PlotMoose_wintercover[
 # Final moose winter cover ranking
 PlotMoose_wintercover[, MWCSuit := STSuit]
 
+# Trying to use modifiers instead of SKWERM (but modifiers based on SKWERM)
+PlotMooseWC<-copy(PlotMoose_data)
+PlotMooseWC[, SlopeSuit :=
+                 fifelse(Slope_PC<40,1,
+                         fifelse(Slope_PC<60, 0.8,
+                                 fifelse(Slope_PC<100,0.5,0)))]
+PlotMooseWC[, AspectSuit :=
+                 fifelse(is.na(Aspect), 1.0,
+                         fifelse(Aspect >= 315 | Aspect <= 45, 0.8,
+                                 fifelse(Aspect >= 135 & Aspect <= 225, 1.0,
+                                         fifelse(Aspect > 45 & Aspect < 135, 0.9,
+                                                 fifelse(Aspect > 225 & Aspect < 315, 0.9, 0)))))]
+
+PlotMooseWC[, StructSuit :=
+                 fifelse(structural_stage %in% c("6", "7"), 1,
+                         fifelse(structural_stage =="5", 0.5,
+                                 fifelse(structural_stage =="4",0.25,
+                                         fifelse(structural_stage == "3b",0.05,0))))]
+PlotMooseWC[, ElevSuit :=
+                 fifelse(elevation<1200,1,
+                         fifelse(elevation<1500, 0.8,0))]
+
+PlotMooseWC[, CrownSuit :=
+                 fifelse(CrownClos>60,1,
+                         fifelse(CrownClos>40, 0.8,
+                                 fifelse(CrownClos>25,0.5,0.1)))]
+PlotMooseWC[, StandSuit :=
+                 fifelse(is.na(StandType), 1,
+                         fifelse(StandType =="C", 1,
+                                 fifelse(StandType =="M",0.6,
+                                         fifelse(StandType == "B",0.2,0))))]
+# MOOSE WINTER COVER HABITAT INDEX
+
+# look into more references
+# 1 * Crown closure (Wall et al. 2011; Eastmann 1977)
+# 1 * Stand composition (Wall et al. 2011; SKWERM 2026)
+# 1 * Structural Stage (Wall et al. 2011; SKWERM 2026)
+# 0.75 * Elevation (Gillingham and Parker 2008; Wall et al. 2011; Eastmann 1977; SKWERM 2026)
+# 0.65 * Slope (Wall et al. 2011; SKWERM 2026)
+# 0.4 * Aspect (Wall et al. 2011; Eastmann 1977; SKWERM 2026)
+
+PlotMooseWC[, MWCHabitat := round(sum(0.65*(SlopeSuit), 0.4*(AspectSuit), 1*(StructSuit), 
+                                         0.75*(ElevSuit),1*(CrownSuit),1*(StandSuit)), digits = 2), by=PlotID] # similar to marten, unsure why not multiplicative?
+# Multiplicative model (SKWERM standard) 
+PlotMooseWC[, MWCHabitat := round(
+  (0.65*SlopeSuit) * (0.4*AspectSuit) * (1*StructSuit) * (0.75*ElevSuit) * (1*CrownSuit) * (1*StandSuit), 
+  digits = 2
+), by = PlotID]
+
 # Moose - growing forage--------
       # Suitability of 6 if Slope > 100% OR winter browse % = 0
 # 1) Available moose growing season forage
@@ -663,6 +725,80 @@ PlotMoose_growingcover[
 # Final growing season cover
 PlotMoose_growingcover[, MGCSuit := STSuit]
 
+
+# ELK ###########
+PlotElk_data <- merge(FR_treatments[, .(PlotID, Aspect, elevation, Slope_PC)],
+                                     structstage, by = "PlotID",  all.x = TRUE)
+# SNOW -- likely will move to 01_snow_depth.R
+PlotElk_data[, ElevSnow :=
+          fifelse(elevation < 800, 1,
+                  fifelse(elevation < 1000, 0.8,
+                          fifelse(elevation < 1200, 0.5,
+                                  fifelse(elevation < 1400, 0.2, 0))))]
+PlotElk_data[, AspectSnow :=
+          fifelse(is.na(Aspect), 1,
+                  fifelse(Aspect >= 135 & Aspect <= 225, 1,
+                          fifelse(Aspect >= 90 & Aspect < 135 |
+                                    Aspect > 225 & Aspect <= 270, 0.7,
+                                  fifelse(Aspect >= 45 & Aspect < 90 |
+                                            Aspect > 270 & Aspect <= 315, 0.4,
+                                          0.2))))]
+PlotElk_data[, SlopeSnow :=
+          fifelse(Slope_PC > 100, 1,
+                  fifelse(Slope_PC > 60, 0.8,
+                          fifelse(Slope_PC > 40, 0.6,
+                                  fifelse(Slope_PC > 20, 0.3, 0.1))))]
+PlotElk_data[, SnowIndex :=
+          round((ElevSnow*0.5 +
+                   AspectSnow*0.3 +
+                   SlopeSnow*0.2), 2)]
+# Elk - winter forage ####
+# Slope - NA or factor of snow depth/interception
+# Aspect - south-facing  (RIC, 1997d; Safford 2004; Poole and Mowat 2005)
+# Elevation - lower than growing season, limited by snow depth
+# Crown Closure - closed (Hobbs et al. 1981)
+# Stand Type - Conifer/shrub (Hobbs et al. 1981)
+
+# 1) Available elk winter forage
+ElkWinterBrowseSpecies <- c("AC", "AT", "AMELALN", "SORBSCO", "EP", "LONIINV", "MAHOAQU", "OPLOHOR", "PAXIMYR", "FD", "SALISPP", 
+                            "VACCMEM", "VACCOVA", "VACCMYR", "VIBUEDU", "RIBELAC", "RIBESP", "ROSAACI", "SYMPALB", "SHEPCAN", 
+                            "BL", "SORBSIT", "RUBUPAR")
+
+ElkWinterBrowse <- PlotShrubCov[Species %in% ElkWinterBrowseSpecies,.(ElkWinterBrowsePerCov = sum(PerCov)),by = PlotID] # CHECK
+
+# Elk - winter cover ####
+# Slope - NA or factor of snow depth/interception
+# Aspect - south-facing  (RIC, 1997d; Safford 2004; Poole and Mowat 2005)
+# Elevation - lower than growing season, limited by snow depth
+
+# Elk - growing forage ####
+# Slope - NA
+# Aspect - NA
+# Elevation - NA
+# Forage - more forage = better, using same categories as moose (>40%, >20-40%, >10-20%, 5-10%, <5%, 0)
+# Forage Height - 2.5 m reach (Baker et al. 1997)
+# Stand Type - C/M/B all good, non-forested only good if wetland, vegetated slide, or rock outcrop (Nyberg and Janz, 1990)
+# Structural Stage - 1 = poor, 2-3 = moderate, 4-7 = good  (Goulet and Haddow, 1985)
+# Crown closure - open = good (Peek et al., 1982)
+# Edge habitat - good (unsure how to model this and maybe don't need to bc we are separating cover and forage)
+
+# 1) Available elk growing forage
+ElkGrowingBrowseSpecies <- c("AMELALN", "AT", "SALISPP", "LONIINV", "MAHOAQU", "RIBELAC", "RIBESP", "RUBUPAR", "RUBUIDA", 
+                             "SAMBRAC", "VACCMEM", "VACCOVA", "VACCMYR", "ACERGLA", "ALNUSIN", "MENZFER", "SYMPALB", 
+                             "VIBUEDU", "SORBSIT", "SORBSCO", "OPLOHOR", "PAXIMYR")
+ElkGrowingBrowse <- PlotShrubCov[Species %in% ElkGrowingBrowseSpecies,.(ElkGrowingBrowsePerCov = sum(PerCov)),by = PlotID] # CHECK some percent covers total to >100%
+
+# Elk - growing cover #####
+# Slope - NA
+# Aspect - NA
+# Elevation - higher elevation = less predators (Moa et al. 2005)
+# Forage - more forage = better, using same categories as moose (>40%, >20-40%, >10-20%, 5-10%, <5%, 0)
+# Forage Height - 2.5 m reach (Baker et al. 1997)
+# Stand Type - C/M/B all good, non-forested only good if wetland, vegetated slide, or rock outcrop (Nyberg and Janz, 1990)
+# Structural Stage - 1 = poor, 2-3 = moderate, 4-7 = good  (Goulet and Haddow, 1985)
+# Crown closure - open = good (Peek et al., 1982)
+# Edge habitat - good (unsure how to model this and maybe don't need to bc we are separating cover and forage)
+
 #-- ALL SPECIES 
 HabitatIndices <- plot_treatments[PlotMarten, ("MartenHabitat") := mget("MartenHabitat"), on = "PlotID"]
 HabitatIndices <- HabitatIndices[PlotFisher, ("FisherHabitat") := mget("FisherHabitat"), on = "PlotID"]
@@ -680,10 +816,6 @@ HabitatIndices <- HabitatIndices[PlotMoose_growingcover, ("MooseGrowingCoverHabi
 
 # export 
 write.csv(HabitatIndices, file.path(out_dir,"hab_ind.csv"), row.names = FALSE)
-
-
-
-
 
 #-----------------------
 #-- Preliminary Figures
