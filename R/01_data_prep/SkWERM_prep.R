@@ -21,8 +21,7 @@ sapply(files_to_source, source)
 #-- Load data-------------------------------------------------------------------
 # Plot/treatment data:
 FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
-setnames(FR_treatments, c("ID", "Aspect", "Slope_PC", "elevation"),
-         c("PlotID","ASPECT","SLOPE", "ELEV"))
+setnames(FR_treatments,"ID", "PlotID")
 
 # Plot location data with BEC subzones:
 FRplots_dt <-fread(file.path(in_dir, "FRplots_BEC.csv"))
@@ -30,7 +29,6 @@ setnames(FRplots_dt, "Name", "PlotID")
 
 # Structural stage
 FR_structural_stage <- fread(file.path(in_dir,"FireRehab_structural_stage.csv"))
-setnames(FR_structural_stage,"structural_stage","STRCT")
 
 #Tree data:
 A1trees <- fread(file.path(in_dir,"A1trees.csv"))
@@ -59,7 +57,7 @@ scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
 #Plot treatment cleaning
 FR_treatments[, `:=`(PlotID = factor(PlotID),BGC_LABEL = as.character(BGC_LABEL), TimeSinceFire = 2020 - FIRE_YEAR)]
 #for this paper, we don't need all the columns:
-plot_treatments <- FR_treatments[,.(PlotID, ASPECT, SLOPE, ELEV, BGC_LABEL, TimeSinceFire)]
+plot_treatments <- FR_treatments[,.(PlotID, Aspect, Slope_PC, elevation, BGC_LABEL, TimeSinceFire)]
 plot_treatments[, `:=`(
   BGC_zone = sub("^([A-Z]+).*", "\\1", BGC_LABEL), # Extract leading uppercase letters
   BGC_subzone = sub("^([A-Z]+)", "", BGC_LABEL), # Remove zone and variant, leaving subzone
@@ -88,7 +86,6 @@ PlotCrown <- densiometer[,.(SubPlotOpen=mean(Densiometer)), by = c("PlotID", "Su
 PlotCrown <- PlotCrown[,.(CrownOpen=mean(SubPlotOpen)*1.04), by = PlotID]
 # convert openness to canopy closure
 PlotCrown[, CrownClos:= 100-CrownOpen][, CrownOpen := NULL]
-setnames(PlotCrown,"CrownClos","CR_CLOSURE")
 # ** what should we do with FR01 crown closure wasn't measured**
 
 # Basal area
@@ -96,6 +93,13 @@ setnames(PlotCrown,"CrownClos","CR_CLOSURE")
 PlotBAPHlive <- BAPHlive(A1trees, B1trees)
  # live by species
 plotBAPH_species<-BAPH_species(A1trees, B1trees)
+plotBAPH_species_wide <- dcast(
+  plotBAPH_species,
+  PlotID ~ Species,
+  value.var = "BAPH",
+  fill = 0)
+setnames(plotBAPH_species_wide, old = names(plotBAPH_species_wide)[names(plotBAPH_species_wide) != "PlotID"],
+         new = paste0("BAPH_", names(plotBAPH_species_wide)[names(plotBAPH_species_wide) != "PlotID"]))
 # dead
 PlotBAPHdead <- BAPHdead(A1trees, B1trees)
 
@@ -141,7 +145,10 @@ PlotThermalForage <- ThermalForage(PlotShrubCov, PlotCrown)
 # Combine plot data
 plot_treatments<-merge(plot_treatments,FRplots_dt[,.(PlotID, Longitude,Latitude)], by = "PlotID")
 plot_treatments<-merge(plot_treatments,FR_structural_stage, by = "PlotID")
-plot_treatments<-merge(plot_treatments,FR_structural_stage, by = "PlotID")
 plot_treatments<-merge(plot_treatments,standType, by = "PlotID")
+plot_treatments<-merge(plot_treatments,plotBAPH_species_wide, by = "PlotID")
+plot_treatments<-merge(plot_treatments,PlotCrown, by = "PlotID")
+setnames(plot_treatments, c("Aspect", "Slope_PC", "elevation", "structural_stage","CrownClos"),
+         c("ASPECT","SLOPE", "ELEV", "STRCT","CR_CLOSURE"))
 
 
