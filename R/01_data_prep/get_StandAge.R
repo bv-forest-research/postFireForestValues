@@ -1,9 +1,10 @@
 # This script estimates stand age from RESULTS
-
+install.packages("tidyverse")
 # Load libraries
 library(sf)
 library(fs)
 library(data.table)
+library(tidyverse)
 
 in_dir <- "01-data_inputs"
 out_dir <- "01-data_inputs"
@@ -18,11 +19,34 @@ setnames(FR_treatments,"ID", "PlotID")
 # import RESULTS overlap with plots
 FROpenings <- fread(file.path(in_dir, "FRplots_Openings.csv")) 
 setnames(FROpenings, "ID", "PlotID")
-FROpenings[, HARVEST_YEAR := as.integer(substr(DISTURBANC, nchar(DISTURBANC) - 3, nchar(DISTURBANC)))]
-FROpenings<-FROpenings[DENUDATION == "L"]
-FR_treatments<-merge(FR_treatments, FROpenings[, .(PlotID,DISTURBANC, DENUDATION,Age, HARVEST_YEAR)], by = "PlotID", all.x = TRUE) # four sites say L from FROpenings but not harvest from FR_treatments
 
-FR_treatments[, Stand_Age := fcase(FIRE_YEAR > HARVEST_YEAR & CumBurnSev %in% c("M", "MH", "H"), 2020 - FIRE_YEAR,  # Fire occurred after harvest and burn severity was Moderate or High
-                                FIRE_YEAR > HARVEST_YEAR & CumBurnSev %in% c("L", "LM"), 2020 - HARVEST_YEAR, # Fire occurred after harvest and burn severity was Low
-                                FIRE_YEAR < HARVEST_YEAR, 2020 - HARVEST_YEAR, default = NA_real_)] # Harvest occurred after fire
-#look into why so many NAs and check L/LM burns, and all Logegd sites
+#Extract harvest year from DISTURBANC
+FROpenings[, HARVEST_YEAR := as.integer(substr(DISTURBANC, nchar(DISTURBANC) 
+                                               - 3, nchar(DISTURBANC)))]
+# Keep only logged sites
+FROpenings<-FROpenings[DENUDATION == "L"]
+
+# Join harvest info to treatment data
+FR_treatments<-merge(FR_treatments, FROpenings[, .(PlotID,DISTURBANC, 
+                    DENUDATION,Age, HARVEST_YEAR)], by = "PlotID", all.x = TRUE) 
+
+# Retain only variables of interest
+FR_treatments<- FR_treatments[, .(PlotID, CumBurnSev, DENUDATION, FIRE_YEAR, HARVEST_YEAR)]
+
+# Calculate stand age
+FR_treatments[, Stand_Age := fcase(is.na(HARVEST_YEAR) & !is.na(FIRE_YEAR), 2020 - FIRE_YEAR,
+                            FIRE_YEAR > HARVEST_YEAR & CumBurnSev %in% c("M", "MH", "H"), 2020 - FIRE_YEAR,
+                            FIRE_YEAR > HARVEST_YEAR & CumBurnSev %in% c("L", "LM"), 2020 - HARVEST_YEAR,
+                            FIRE_YEAR < HARVEST_YEAR, 2020 - HARVEST_YEAR,
+                            default = NA_real_)]
+  
+FR_treatments
+
+B1trees <- fread(file.path(in_dir,"B1trees.csv")) # do we only care about big trees?
+TreeCounts <- B1trees[, .(
+  Living_Trees = sum(Tree_class %in% c(1, 2), na.rm = TRUE),
+  Dead_Trees = sum(Tree_class >= 3, na.rm = TRUE)
+), by = PlotID]
+
+
+FR_treatments<-merge(FR_treatments, TreeCounts, by = "PlotID") # what if no trees?
