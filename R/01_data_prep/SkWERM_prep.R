@@ -30,6 +30,10 @@ setnames(FRplots_dt, "Name", "PlotID")
 # Structural stage
 FR_structural_stage <- fread(file.path(in_dir,"FireRehab_structural_stage.csv"))
 
+# Stand Age
+FR_Stand_Age <- fread(file.path(in_dir,"FR_Stand_Age.csv"))
+
+
 #Tree data:
 A1trees <- fread(file.path(in_dir,"A1trees.csv"))
 B1trees <- fread(file.path(in_dir,"B1trees.csv"))
@@ -79,7 +83,7 @@ PlotCrown <- densiometer[,.(SubPlotOpen=mean(Densiometer)), by = c("PlotID", "Su
 PlotCrown <- PlotCrown[,.(CrownOpen=mean(SubPlotOpen)*1.04), by = PlotID]
 # convert openness to canopy closure
 PlotCrown[, CrownClos:= 100-CrownOpen][, CrownOpen := NULL]
-# ** what should we do with FR01 crown closure wasn't measured**
+PlotCrown <- PlotCrown[PlotID == "FR28" & is.na(CrownClos), CrownClos := 10] # adding in Crown Closure based on estimated amount from FireRehabData_v5, will remove FR01/02 at the end
 
 # Basal area
 # live
@@ -91,6 +95,21 @@ plotBAPH_species_wide <- dcast(
   PlotID ~ Species,
   value.var = "BAPH",
   fill = 0)
+# Add missing plots
+plotBAPH_species_wide <- merge(
+  FR_treatments[, .(PlotID)],
+  plotBAPH_species_wide,
+  by = "PlotID",
+  all.x = TRUE)
+# Replace NAs introduced by the merge with 0
+for(col in setdiff(names(plotBAPH_species_wide), "PlotID")){
+  set(
+    plotBAPH_species_wide,
+    i = which(is.na(plotBAPH_species_wide[[col]])),
+    j = col,
+    value = 0
+  )
+}
 setnames(plotBAPH_species_wide, old = names(plotBAPH_species_wide)[names(plotBAPH_species_wide) != "PlotID"],
          new = paste0("BAPH_", names(plotBAPH_species_wide)[names(plotBAPH_species_wide) != "PlotID"]))
 # dead
@@ -141,8 +160,21 @@ plot_treatments<-merge(plot_treatments,FR_structural_stage, by = "PlotID")
 plot_treatments<-merge(plot_treatments,standType, by = "PlotID")
 plot_treatments<-merge(plot_treatments,plotBAPH_species_wide, by = "PlotID")
 plot_treatments<-merge(plot_treatments,PlotCrown, by = "PlotID")
-setnames(plot_treatments, c("Aspect", "Slope_PC", "elevation", "structural_stage","CrownClos"),
-         c("ASPECT","SLOPE", "ELEV", "STRCT","CR_CLOSURE"))
+plot_treatments<-merge(plot_treatments, FR_Stand_Age, by = "PlotID")
+setnames(plot_treatments, c("Aspect", "Slope_PC", "elevation", "structural_stage","CrownClos", "Stand_Age"),
+         c("ASPECT","SLOPE", "ELEV", "STRCT","CR_CLOSURE", "PROJ_AGE_1"))
 plot_treatments[,SITE_M3A := NA_character_]
-
-
+plot_treatments[,BCLCS_LV_1 := "V"]
+plot_treatments[,BCLCS_LV_2 := "T"]
+plot_treatments[,BCLCS_LV_3 := "U"]
+plot_treatments[,BCLCS_LV_4 := fcase(
+  STRCT %in% c(4, 5, 6, 7) & StandType == "C", "TC",
+  STRCT %in% c(4, 5, 6, 7) & StandType == "B", "TB",
+  STRCT %in% c(4, 5, 6, 7) & StandType == "M", "TM",
+  STRCT == "3b", "ST",
+  STRCT == "3a", "SL",
+  STRCT == "2b", "HG",
+  STRCT == "2a", "HE",
+  default = NA_character_)]
+plot_treatments <- plot_treatments[-c(1,2)]
+plot_treatments[, .()]
