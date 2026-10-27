@@ -5,7 +5,6 @@
 # Nikki Beaudoin
 # October 22, 2026
 
-
 # Load libraries
 library(data.table)
 library(tidyverse)
@@ -63,16 +62,22 @@ FR_treatments[, `:=`(PlotID = factor(PlotID), TimeSinceFire = 2020 - FIRE_YEAR)]
 #for this paper, we don't need all the columns:
 plot_treatments <- FR_treatments[,.(PlotID, Aspect, Slope_PC, elevation,  TimeSinceFire)]
 
+# All plots to be used in calculations remove plots
+allPlots <- data.table(PlotID = sprintf("FR%02d", 1:75))
+
+
 # Calculate plot attributes ----------------------------------------------------------------------------------
 # These attributes are metrics that will be used in one or many of the habitat indices
 # CWD quality
 PlotCQI <- cwdQI(cwd)
 PlotCQI[, CQI:=round(CQI*0.01, digit=2)] #values between 0-1; 0=bad 1=best
+PlotCQI <- merge(allPlots, PlotCQI, by = "PlotID", all.x = TRUE)[is.na(CQI), CQI := 0]
 
 # CWD piles
 PlotPiles <- cwdPiles(cwd)
-PlotPiles[PlotID=="FR17" & Transect=="1", PileCount := 2] # notes on raw data says in 2 large piles
+PlotPiles[PlotID =="FR17" & Transect=="1", PileCount := 2] # notes on raw data says in 2 large piles
 PlotPiles <- PlotPiles[,.(PileCount = sum(PileCount)), by = PlotID]
+PlotPiles <- merge(allPlots, PlotPiles, by = "PlotID", all.x = TRUE)[is.na(PileCount), PileCount := 0]
 
 # CWD volume
 PlotCWD <- cwdVol(cwd, line)
@@ -95,12 +100,7 @@ plotBAPH_species_wide <- dcast(
   PlotID ~ Species,
   value.var = "BAPH",
   fill = 0)
-# Add missing plots
-plotBAPH_species_wide <- merge(
-  FR_treatments[, .(PlotID)],
-  plotBAPH_species_wide,
-  by = "PlotID",
-  all.x = TRUE)
+plotBAPH_species_wide <- merge(allPlots, plotBAPH_species_wide, by = "PlotID", all.x = TRUE)
 # Replace NAs introduced by the merge with 0
 for(col in setdiff(names(plotBAPH_species_wide), "PlotID")){
   set(
@@ -125,14 +125,8 @@ PlotSnags <- SnagDensity(A1trees, B1trees)
 treeComp <- PlotTree[DBH_bin >=12, totalSPH := sum(SPH), by=c("PlotID")] # add detail as to why the cut off (I think because it's targetting the large trees)
 treeComp <- treeComp[DBH_bin >=12, .(spComp=sum(SPH)/totalSPH), by=c("PlotID", "Species")]
 treeComp <- unique(treeComp)
-
-allPlots <- data.table(PlotID = sprintf("FR%02d", 1:75))
-missingPlots <- allPlots[
-  !PlotTree[DBH_bin >= 12, unique(PlotID)],
-  on = "PlotID"
-]
-missingPlots[, `:=`(Species = NA_character_, spComp = 1)]
-treeComp <- rbind(treeComp[, .(PlotID, Species, spComp)], missingPlots, fill = TRUE) #adding in plots with no large trees and assigning them a SpComp of 1 for NA
+treeComp <- merge(allPlots, treeComp[, .(PlotID, Species, spComp)], by = "PlotID", all.x = TRUE)[
+  is.na(spComp), `:=`(Species = NA_character_, spComp = 1)]
 
 # Stand type
 # Classify stand type - which is based on tree species composition
@@ -155,7 +149,7 @@ PlotHuckberry <- Huckberry(PlotShrubCov, PlotCrown)
 PlotThermalForage <- ThermalForage(PlotShrubCov, PlotCrown)
 
 # Combine plot data
-plot_treatments<-merge(plot_treatments,FRplots_dt[,.(PlotID, Longitude,Latitude, ZONE, SUBZONE, VARIANT, PHASE)], by = "PlotID")
+plot_treatments<-merge(plot_treatments,FRplots_dt[,.(PlotID, Longitude, Latitude, ZONE, SUBZONE, VARIANT, PHASE)], by = "PlotID")
 plot_treatments<-merge(plot_treatments,FR_structural_stage, by = "PlotID")
 plot_treatments<-merge(plot_treatments,standType, by = "PlotID")
 plot_treatments<-merge(plot_treatments,plotBAPH_species_wide, by = "PlotID")
@@ -168,13 +162,18 @@ plot_treatments[,BCLCS_LV_1 := "V"]
 plot_treatments[,BCLCS_LV_2 := "T"]
 plot_treatments[,BCLCS_LV_3 := "U"]
 plot_treatments[,BCLCS_LV_4 := fcase(
-  STRCT %in% c(4, 5, 6, 7) & StandType == "C", "TC",
-  STRCT %in% c(4, 5, 6, 7) & StandType == "B", "TB",
-  STRCT %in% c(4, 5, 6, 7) & StandType == "M", "TM",
-  STRCT == "3b", "ST",
-  STRCT == "3a", "SL",
-  STRCT == "2b", "HG",
-  STRCT == "2a", "HE",
+  StandType == "C", "TC",
+  StandType == "B", "TB",
+  StandType == "M", "TM",
+  StandType == "NF" & STRCT == "3b", "ST",
+  StandType == "NF" & STRCT == "3a", "SL",
+  StandType == "NF" & STRCT == "2b", "HG",
+  StandType == "NF" & STRCT == "2a", "HE",
   default = NA_character_)]
+plot_treatments <- plot_treatments[PlotID == "FR18" & is.na(BCLCS_LV_4), BCLCS_LV_4 := "TC"] # adding in BCLCS_LV_4 bc regen and large dead trees conifer and StandType is only based on living large trees
+
 plot_treatments <- plot_treatments[-c(1,2)]
-plot_treatments[, .()]
+plot_treatments <- plot_treatments |> 
+  select(PolyID = PlotID, BCLCS_LV_1, BCLCS_LV_2, BCLCS_LV_3, BCLCS_LV_4, 
+         BGC_ZONE = ZONE, BGC_SUBZONE = SUBZONE, BGC_VRT = VARIANT, BGC_PHASE = PHASE,
+         PROJ_AGE_1, SLOPE, ELEV, ASPECT, SITE_M3A, CR_CLOSURE, STRCT, starts_with("BAPH"))
