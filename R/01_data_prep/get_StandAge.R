@@ -31,14 +31,13 @@ FR_treatments<-merge(FR_treatments, FROpenings[, .(PlotID,DISTURBANC,
                     DENUDATION,Age, HARVEST_YEAR)], by = "PlotID", all.x = TRUE) 
 
 # Join Tree info to treatment data
-B1trees <- fread(file.path(in_dir,"B1trees.csv")) # do we only care about big trees?
+B1trees <- fread(file.path(in_dir,"B1trees.csv"))
 TreeCounts <- B1trees[, .(
   Living_Trees = sum(Tree_class %in% c(1, 2), na.rm = TRUE),
   Dead_Trees = sum(Tree_class >= 3, na.rm = TRUE)
 ), by = PlotID]
 
-FR_treatments<-merge(FR_treatments, TreeCounts, by = "PlotID") # what if no trees?
-
+FR_treatments<-merge(FR_treatments, TreeCounts, by = "PlotID")
 # Retain only variables of interest
 FR_treatments<- FR_treatments[, .(PlotID, CumBurnSev, DENUDATION, FIRE_YEAR, HARVEST_YEAR, Living_Trees, Dead_Trees)]
 FR_treatments |>
@@ -60,6 +59,6 @@ FR_treatments[, Stand_Age := fcase(is.na(HARVEST_YEAR) & !is.na(FIRE_YEAR), 2020
                             FIRE_YEAR == HARVEST_YEAR, 2020 - FIRE_YEAR,
                             default = NA_real_)]
 
-FR_treatments |>
-  arrange(DENUDATION, CumBurnSev)
+FR_Stand_Age <- FR_treatments[, .(PlotID, Stand_Age)]
 
+fwrite(FR_Stand_Age, file.path(in_dir, "FR_Stand_Age.csv"))
