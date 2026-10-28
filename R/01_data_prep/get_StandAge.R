@@ -21,7 +21,7 @@ FROpenings <- fread(file.path(in_dir, "FRplots_Openings.csv"))
 setnames(FROpenings, "ID", "PlotID")
 
 #Extract harvest year from DISTURBANC
-FROpenings[, HARVEST_YEAR := as.integer(substr(DISTURBANC, nchar(DISTURBANC) 
+FROpenings[, HARVEST_YEAR := as.integer(substr(DISTURBANC, nchar(DISTURBANC) # taking the last 4 characters from the date i.e. only extracting the year
                                                - 3, nchar(DISTURBANC)))]
 # Keep only logged sites
 FROpenings<-FROpenings[DENUDATION == "L"]
