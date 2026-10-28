@@ -8,10 +8,9 @@
 # Load libraries
 library(data.table)
 library(tidyverse)
-library(ggpubr)
 
-in_dir <- "C:/Users/Nikki Beaudoin/Documents/r_repo/postFireForestValues/01-data_inputs"
-out_dir <- "C:/Users/Nikki Beaudoin/Documents/r_repo/postFireForestValues/02-prepped_values"
+in_dir <- "01-data_inputs"
+out_dir <- "02-prepped_values"
 
 files_to_source <- list.files("./R/00-utils/", pattern = "Function", 
                               full.names = TRUE)
@@ -20,11 +19,9 @@ sapply(files_to_source, source)
 #-- Load data-------------------------------------------------------------------
 # Plot/treatment data:
 FR_treatments <- fread(file.path(in_dir,"FR_Treatments.csv"))
-setnames(FR_treatments,"ID", "PlotID")
 
 # Plot location data with BEC subzones:
 FRplots_dt <-fread(file.path(in_dir, "FRplots_BEC.csv"))
-setnames(FRplots_dt, "Name", "PlotID")
 
 # Structural stage
 FR_structural_stage <- fread(file.path(in_dir,"FireRehab_structural_stage.csv"))
@@ -32,55 +29,24 @@ FR_structural_stage <- fread(file.path(in_dir,"FireRehab_structural_stage.csv"))
 # Stand Age
 FR_Stand_Age <- fread(file.path(in_dir,"FR_Stand_Age.csv"))
 
-
 #Tree data:
 A1trees <- fread(file.path(in_dir,"A1trees.csv"))
 B1trees <- fread(file.path(in_dir,"B1trees.csv"))
 Regen <- fread(file.path(in_dir,"Regen.csv"))
 
-#Soils data:
-Soils <- fread(file.path(in_dir,"Soils.csv"))
-
-#Woody debris:
-cwd <- fread(file.path(in_dir,"FireRehabData_CWD.csv"),stringsAsFactors = T)
-fwd <- fread(file.path(in_dir,"FireRehabData_FWD.csv"),stringsAsFactors = T)
-line <- fread(file.path(in_dir,"FireRehabData_TransectDistance.csv"),stringsAsFactors = T)
-setnames(line, "Plot","PlotID")
-
 # Cover
 densiometer <- fread(file.path(in_dir,"FRdensiometer.csv"))
-Cover <- fread(file.path(in_dir,"FRstrataCover.csv")) #B1= <2m and B2=2-10m shrub heights)
-setnames(Cover, c("Total_B1", "Total_B2"), c("ShrubsB1", "ShrubsB2"))
-ShrubVolume <- fread(file.path(in_dir,"FR_shrubVolumes.csv"))
-
-# scale function
-scale_fn <- function(var){(var - min(var)) / (max(var) - min(var))}
-
-# Cleaning (small)
-#Plot treatment cleaning
-FR_treatments[, `:=`(PlotID = factor(PlotID), TimeSinceFire = 2020 - FIRE_YEAR)]
-#for this paper, we don't need all the columns:
-plot_treatments <- FR_treatments[,.(PlotID, Aspect, Slope_PC, elevation,  TimeSinceFire)]
 
 # All plots to be used in calculations remove plots
 allPlots <- data.table(PlotID = sprintf("FR%02d", 1:75))
 
+# Cleaning ----------------------------------------------------------------
+setnames(FR_treatments,"ID", "PlotID")
+setnames(FRplots_dt, "Name", "PlotID")
+plot_treatments <- FR_treatments[,.(PlotID, Aspect, Slope_PC, elevation)]
 
 # Calculate plot attributes ----------------------------------------------------------------------------------
 # These attributes are metrics that will be used in one or many of the habitat indices
-# CWD quality
-PlotCQI <- cwdQI(cwd)
-PlotCQI[, CQI:=round(CQI*0.01, digit=2)] #values between 0-1; 0=bad 1=best
-PlotCQI <- merge(allPlots, PlotCQI, by = "PlotID", all.x = TRUE)[is.na(CQI), CQI := 0]
-
-# CWD piles
-PlotPiles <- cwdPiles(cwd)
-PlotPiles[PlotID =="FR17" & Transect=="1", PileCount := 2] # notes on raw data says in 2 large piles
-PlotPiles <- PlotPiles[,.(PileCount = sum(PileCount)), by = PlotID]
-PlotPiles <- merge(allPlots, PlotPiles, by = "PlotID", all.x = TRUE)[is.na(PileCount), PileCount := 0]
-
-# CWD volume
-PlotCWD <- cwdVol(cwd, line)
 
 # Crown closure
 # mean of densiometer readings and multiply by 1.04 to get canopy openness
@@ -91,8 +57,6 @@ PlotCrown[, CrownClos:= 100-CrownOpen][, CrownOpen := NULL]
 PlotCrown <- PlotCrown[PlotID == "FR28" & is.na(CrownClos), CrownClos := 10] # adding in Crown Closure based on estimated amount from FireRehabData_v5, will remove FR01/02 at the end
 
 # Basal area
-# live
-PlotBAPHlive <- BAPHlive(A1trees, B1trees)
  # live by species
 plotBAPH_species<-BAPH_species(A1trees, B1trees)
 plotBAPH_species_wide <- dcast(
@@ -112,14 +76,10 @@ for(col in setdiff(names(plotBAPH_species_wide), "PlotID")){
 }
 setnames(plotBAPH_species_wide, old = names(plotBAPH_species_wide)[names(plotBAPH_species_wide) != "PlotID"],
          new = paste0("BAPH_", names(plotBAPH_species_wide)[names(plotBAPH_species_wide) != "PlotID"]))
-# dead
-PlotBAPHdead <- BAPHdead(A1trees, B1trees)
 
 # Tree density/sph
 # live
 PlotTree <- TreeDensity(A1trees, B1trees, ClassSize = 2)
-# dead
-PlotSnags <- SnagDensity(A1trees, B1trees)
 
 # Tree composition
 treeComp <- PlotTree[DBH_bin >=12, totalSPH := sum(SPH), by=c("PlotID")] # add detail as to why the cut off (I think because it's targetting the large trees)
@@ -141,14 +101,8 @@ standType[, StandType := fifelse(conComp > 0.75, "C",
                                                  fifelse(conComp == 0 & broadComp == 0, "NF", NA_character_))))] #adding in mixed and non-forested class 
 
 
-# Individual shrub species percent cover (calculated from their volumes) and average height
-PlotShrubCov <- ShrubSpCov(ShrubVolume)
-PlotShrubCov[Species == "MOHOAQU", Species := "MAHOAQU"]
-# % cover of huckleberry berries
-PlotHuckberry <- Huckberry(PlotShrubCov, PlotCrown)
-PlotThermalForage <- ThermalForage(PlotShrubCov, PlotCrown)
 
-# Combine plot data
+# Combine Plot Data -------------------------------------------------------
 plot_treatments<-merge(plot_treatments,FRplots_dt[,.(PlotID, Longitude, Latitude, ZONE, SUBZONE, VARIANT, PHASE)], by = "PlotID")
 plot_treatments<-merge(plot_treatments,FR_structural_stage, by = "PlotID")
 plot_treatments<-merge(plot_treatments,standType, by = "PlotID")
@@ -172,8 +126,9 @@ plot_treatments[,BCLCS_LV_4 := fcase(
   default = NA_character_)]
 plot_treatments <- plot_treatments[PlotID == "FR18" & is.na(BCLCS_LV_4), BCLCS_LV_4 := "TC"] # adding in BCLCS_LV_4 bc regen and large dead trees conifer and StandType is only based on living large trees
 
-plot_treatments <- plot_treatments[-c(1,2)]
+plot_treatments <- plot_treatments[!PlotID %in% c("FR01","FR02")]
 plot_treatments <- plot_treatments |> 
   select(PolyID = PlotID, BCLCS_LV_1, BCLCS_LV_2, BCLCS_LV_3, BCLCS_LV_4, 
          BGC_ZONE = ZONE, BGC_SUBZONE = SUBZONE, BGC_VRT = VARIANT, BGC_PHASE = PHASE,
          PROJ_AGE_1, SLOPE, ELEV, ASPECT, SITE_M3A, CR_CLOSURE, STRCT, starts_with("BAPH"))
+plot_treatments
